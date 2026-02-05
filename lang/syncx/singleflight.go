@@ -1,6 +1,32 @@
 package syncx
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
+
+// panicError 包装 panic 值，使其可以作为 error 返回
+type panicError struct {
+	value any
+}
+
+func (e *panicError) Error() string {
+	return fmt.Sprintf("singleflight: panic: %v", e.value)
+}
+
+// IsPanic 检查错误是否是由 panic 引起的
+func IsPanic(err error) bool {
+	_, ok := err.(*panicError)
+	return ok
+}
+
+// PanicValue 如果错误是由 panic 引起的，返回 panic 的值
+func PanicValue(err error) (any, bool) {
+	if pe, ok := err.(*panicError); ok {
+		return pe.value, true
+	}
+	return nil, false
+}
 
 // call 表示一个正在执行或已完成的函数调用
 type call struct {
@@ -60,8 +86,17 @@ func (g *Singleflight) Do(key string, fn func() (any, error)) (any, error) {
 	g.m[key] = c
 	g.mu.Unlock()
 
-	c.val, c.err = fn()
-	c.wg.Done()
+	// 使用 defer 确保即使 fn() panic，wg.Done() 也会被调用
+	// 防止其他等待的 goroutine 永久阻塞
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				c.err = &panicError{value: r}
+			}
+			c.wg.Done()
+		}()
+		c.val, c.err = fn()
+	}()
 
 	g.mu.Lock()
 	delete(g.m, key)

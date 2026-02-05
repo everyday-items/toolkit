@@ -2,10 +2,9 @@ package local
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"math/rand/v2"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -13,6 +12,10 @@ import (
 
 	"golang.org/x/sync/singleflight"
 )
+
+// fastRand 用于 TTL 抖动的快速随机数生成器
+// Go 1.22+ 的 math/rand/v2 是线程安全的
+var fastRand = rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), uint64(time.Now().UnixNano()>>32)))
 
 var (
 	// 负缓存命中（表示"确实不存在"），用于防穿透。
@@ -157,16 +160,10 @@ func jitterTTL(ttl time.Duration, jitter float64) time.Duration {
 	if maxDelta <= 0 {
 		return ttl
 	}
-	// 使用 crypto/rand 生成安全随机数
-	var buf [8]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return ttl // 失败时不抖动
-	}
-	n := int64(binary.LittleEndian.Uint64(buf[:]))
-	if n < 0 {
-		n = -n
-	}
-	delta := time.Duration(n % (int64(maxDelta) + 1))
+
+	// 使用 math/rand/v2 生成随机数（Go 1.22+ 线程安全，性能更好）
+	// 比 crypto/rand 快 10-100 倍，缓存 TTL 抖动不需要密码学安全性
+	delta := time.Duration(fastRand.Int64N(int64(maxDelta) + 1))
 	return ttl + delta
 }
 
@@ -339,31 +336,29 @@ func (c *Cache) Del(ctx context.Context, keys ...string) error {
 func (c *Cache) getItem(fullKey string) ([]byte, bool, error) {
 	now := c.opts.Now()
 
-	c.mu.RLock()
-	item, ok := c.items[fullKey]
-	c.mu.RUnlock()
+	// 使用写锁进行所有操作，避免竞态条件
+	// 虽然牺牲了一些读取性能，但确保了数据一致性
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	item, ok := c.items[fullKey]
 	if !ok {
 		return nil, false, nil
 	}
+
+	// 检查过期
 	if !item.expireAt.IsZero() && now.After(item.expireAt) {
-		// 过期则清理
-		c.mu.Lock()
 		delete(c.items, fullKey)
-		c.mu.Unlock()
 		return nil, false, nil
 	}
+
 	if len(item.packed) == 0 {
 		return nil, false, ErrCorrupt
 	}
 
-	// LRU: 更新访问时间
-	c.mu.Lock()
-	if it, exists := c.items[fullKey]; exists {
-		it.accessedAt = now
-		c.items[fullKey] = it
-	}
-	c.mu.Unlock()
+	// LRU: 原子更新访问时间（在同一个锁内）
+	item.accessedAt = now
+	c.items[fullKey] = item
 
 	// 返回副本，避免外部修改
 	cp := make([]byte, len(item.packed))

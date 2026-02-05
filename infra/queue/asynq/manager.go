@@ -270,17 +270,21 @@ func (m *Manager) Start(ctx context.Context) error {
 // 可以安全地重复调用，只有第一次调用会执行停止操作
 func (m *Manager) Stop() error {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if !m.started {
-		m.mu.Unlock()
 		return nil // 未启动或已停止，直接返回
 	}
 	m.started = false
-	m.mu.Unlock()
 
 	m.logger.Log("[Asynq] stopping...")
+
+	// 在锁保护下取消 context
 	if m.cancel != nil {
 		m.cancel()
 	}
+
+	// 在锁保护下关闭各组件（避免与 Start 竞态）
 	if m.scheduler != nil {
 		m.scheduler.Shutdown()
 	}
@@ -290,13 +294,13 @@ func (m *Manager) Stop() error {
 	if m.client != nil {
 		m.client.Close()
 	}
+
 	// 关闭 Inspector
-	m.mu.Lock()
 	if m.inspector != nil {
 		m.inspector.Close()
 		m.inspector = nil
 	}
-	m.mu.Unlock()
+
 	m.logger.Log("[Asynq] stopped")
 	return nil
 }

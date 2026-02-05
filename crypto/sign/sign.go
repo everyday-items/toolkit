@@ -192,16 +192,23 @@ func (s *TimestampSigner) Verify(message string, timestamp int64, signature stri
 // VerifyWithExpiry 验证签名并检查时间戳是否过期
 // maxAge: 签名的最大有效期（秒，例如 300 表示 5 分钟）
 // 返回 false 如果签名无效或时间戳已过期
+//
+// 安全说明：
+//   - 拒绝来自未来的时间戳（防止绕过过期检查）
+//   - 仅允许过去 maxAge 秒内的签名
 func (s *TimestampSigner) VerifyWithExpiry(message string, timestamp int64, signature string, maxAge int64) bool {
-	// 检查时间戳是否过期
 	now := time.Now().Unix()
-	diff := now - timestamp
-	if diff < 0 {
-		diff = -diff // 绝对值
+
+	// 严格检查：拒绝来自未来的时间戳（允许 1 秒的时钟偏差）
+	if timestamp > now+1 {
+		return false
 	}
-	if diff > maxAge {
-		return false // 时间戳过期或来自未来
+
+	// 检查时间戳是否过期（仅检查过去）
+	if now-timestamp > maxAge {
+		return false
 	}
+
 	return s.Verify(message, timestamp, signature)
 }
 
@@ -273,18 +280,51 @@ func (s *APISigner) Verify(params map[string]string, timestamp int64, nonce, sig
 // VerifyWithExpiry 验证签名并检查时间戳是否过期
 // maxAge: 签名的最大有效期（秒，例如 300 表示 5 分钟）
 // 返回 false 如果签名无效或时间戳已过期
-// 注意：调用方仍需自行检查 nonce 唯一性以完全防止重放攻击
+//
+// ⚠️ 安全警告：调用方必须检查 nonce 唯一性以完全防止重放攻击！
+// 推荐使用 VerifyWithNonceCheck 方法或自行实现 nonce 去重存储
+//
+// 安全说明：
+//   - 拒绝来自未来的时间戳（防止绕过过期检查）
+//   - 仅允许过去 maxAge 秒内的签名
 func (s *APISigner) VerifyWithExpiry(params map[string]string, timestamp int64, nonce, signature string, maxAge int64) bool {
-	// 检查时间戳是否过期
 	now := time.Now().Unix()
-	diff := now - timestamp
-	if diff < 0 {
-		diff = -diff // 绝对值
+
+	// 严格检查：拒绝来自未来的时间戳（允许 1 秒的时钟偏差）
+	if timestamp > now+1 {
+		return false
 	}
-	if diff > maxAge {
-		return false // 时间戳过期或来自未来
+
+	// 检查时间戳是否过期（仅检查过去）
+	if now-timestamp > maxAge {
+		return false
 	}
+
 	return s.Verify(params, timestamp, nonce, signature)
+}
+
+// NonceChecker nonce 检查器接口（用于防止重放攻击）
+type NonceChecker interface {
+	// Check 检查 nonce 是否已使用，如果未使用则标记为已使用
+	// 返回 true 表示 nonce 有效（未使用过），false 表示 nonce 已使用
+	Check(nonce string, expireAt int64) bool
+}
+
+// VerifyWithNonceCheck 验证签名、时间戳和 nonce
+// 这是最安全的验证方法，完全防止重放攻击
+//
+// 参数：
+//   - nonceChecker: nonce 检查器（需要调用方实现，通常使用 Redis SET NX）
+//   - maxAge: 签名的最大有效期（秒）
+func (s *APISigner) VerifyWithNonceCheck(params map[string]string, timestamp int64, nonce, signature string, maxAge int64, nonceChecker NonceChecker) bool {
+	// 先验证签名和时间戳
+	if !s.VerifyWithExpiry(params, timestamp, nonce, signature, maxAge) {
+		return false
+	}
+
+	// 检查 nonce 唯一性
+	expireAt := timestamp + maxAge
+	return nonceChecker.Check(nonce, expireAt)
 }
 
 // sortAndJoinParams 排序并拼接参数

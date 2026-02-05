@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 var (
@@ -25,6 +26,7 @@ type StreamResponse struct {
 	Headers    http.Header
 	body       io.ReadCloser
 	reader     *bufio.Reader
+	mu         sync.Mutex // 保护 closed 字段和 body 操作
 	closed     bool
 }
 
@@ -126,9 +128,12 @@ func (r *Request) executeStream(opts ...StreamOption) (*StreamResponse, error) {
 
 // ReadLine 读取一行数据
 func (s *StreamResponse) ReadLine() (string, error) {
+	s.mu.Lock()
 	if s.closed {
+		s.mu.Unlock()
 		return "", ErrStreamClosed
 	}
+	s.mu.Unlock()
 
 	line, err := s.reader.ReadString('\n')
 	if err != nil {
@@ -140,9 +145,12 @@ func (s *StreamResponse) ReadLine() (string, error) {
 
 // ReadSSE 读取下一个 SSE 事件
 func (s *StreamResponse) ReadSSE() (*SSEEvent, error) {
+	s.mu.Lock()
 	if s.closed {
+		s.mu.Unlock()
 		return nil, ErrStreamClosed
 	}
+	s.mu.Unlock()
 
 	event := &SSEEvent{}
 	var dataLines []string
@@ -205,15 +213,21 @@ func (s *StreamResponse) ReadJSON(v any) error {
 
 // ReadBytes 读取原始字节流
 func (s *StreamResponse) ReadBytes(p []byte) (int, error) {
+	s.mu.Lock()
 	if s.closed {
+		s.mu.Unlock()
 		return 0, ErrStreamClosed
 	}
+	s.mu.Unlock()
 
 	return s.reader.Read(p)
 }
 
-// Close 关闭流
+// Close 关闭流（并发安全）
 func (s *StreamResponse) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.closed {
 		return nil
 	}

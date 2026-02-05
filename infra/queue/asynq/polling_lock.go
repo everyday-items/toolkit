@@ -23,7 +23,13 @@ const (
 )
 
 // MarkTaskAsPolling 标记任务正在轮询
+//
 // 返回 true 表示成功获取锁，false 表示任务已在轮询中
+//
+// 降级行为说明:
+//   - 当 Redis 未启用时，直接返回 true
+//   - 当 Redis 操作失败时，返回 true 并记录日志（允许继续执行）
+//   - 降级可能导致多个 worker 同时处理同一任务，调用方应确保任务处理是幂等的
 func MarkTaskAsPolling(taskID string) bool {
 	if !GetConfigProvider().IsRedisEnabled() {
 		return true // Redis 未启用，允许继续
@@ -91,8 +97,14 @@ const (
 )
 
 // AcquireMigrationLock 获取迁移锁
+//
 // 返回 true 表示成功获取锁，可以执行迁移
 // 返回 false 表示其他 Pod 正在迁移，应跳过
+//
+// 降级行为说明:
+//   - 当 Redis 未启用时，返回 true（单 Pod 场景）
+//   - 当 Redis 操作失败时，返回 true 并记录日志
+//   - 降级可能导致多个 Pod 同时执行迁移，迁移操作应设计为幂等
 func AcquireMigrationLock() bool {
 	if !GetConfigProvider().IsRedisEnabled() {
 		return true // Redis 未启用，允许继续（单 Pod 场景）

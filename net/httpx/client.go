@@ -417,8 +417,12 @@ func isPrivateOrInternalHost(host string) bool {
 	// 解析 IP 地址
 	ip := net.ParseIP(host)
 	if ip == nil {
-		// 如果是域名，尝试解析
-		ips, err := net.LookupIP(host)
+		// 如果是域名，使用带超时的 DNS 查询
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		resolver := &net.Resolver{}
+		ips, err := resolver.LookupIP(ctx, "ip", host)
 		if err != nil || len(ips) == 0 {
 			return false // 无法解析，允许请求（由网络层处理）
 		}
@@ -454,9 +458,12 @@ type ssrfSafeTransport struct {
 }
 
 func (t *ssrfSafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// 克隆 Transport 避免并发修改问题
+	transport := t.base.Clone()
+
 	// 设置自定义 DialContext，在连接时检查 IP
-	t.base.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, _, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, err
 		}
@@ -472,8 +479,12 @@ func (t *ssrfSafeTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			}
 		}
 
+		// 使用带超时的 context 进行 DNS 查询
+		lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
 		// 解析 IP 地址
-		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
 		if err != nil {
 			return nil, err
 		}
@@ -491,16 +502,33 @@ func (t *ssrfSafeTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			}
 		}
 
-		// 使用第一个安全的 IP 地址建立连接
-		// 这样可以防止 DNS Rebinding：连接时使用的 IP 就是我们检查过的 IP
-		safeAddr := net.JoinHostPort(ips[0].IP.String(), port)
-		return (&net.Dialer{
+		// 建立连接（使用原始地址保持 TLS SNI 正确）
+		dialer := &net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
-		}).DialContext(ctx, network, safeAddr)
+		}
+		conn, err := dialer.DialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+
+		// 连接建立后验证实际连接的 IP（防止 DNS Rebinding）
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			remoteAddr := tcpConn.RemoteAddr()
+			if tcpAddr, ok := remoteAddr.(*net.TCPAddr); ok {
+				ip := tcpAddr.IP
+				if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+					ip.IsLinkLocalMulticast() || isCloudMetadataIP(ip) {
+					conn.Close()
+					return nil, ErrSSRFBlocked
+				}
+			}
+		}
+
+		return conn, nil
 	}
 
-	return t.base.RoundTrip(req)
+	return transport.RoundTrip(req)
 }
 
 // Response HTTP 响应

@@ -382,3 +382,258 @@ func TestCount(t *testing.T) {
 		t.Errorf("expected count 2, got %d", count)
 	}
 }
+
+func TestDiff(t *testing.T) {
+	m1 := map[string]int{"a": 1, "b": 2, "c": 3}
+	m2 := map[string]int{"b": 2, "c": 4}
+	diff := Diff(m1, m2)
+
+	if len(diff) != 1 {
+		t.Errorf("expected 1 element, got %d", len(diff))
+	}
+	if diff["a"] != 1 {
+		t.Errorf("expected diff['a']=1, got %d", diff["a"])
+	}
+}
+
+func TestDiff_Nil(t *testing.T) {
+	var m1 map[string]int
+	m2 := map[string]int{"a": 1}
+	diff := Diff(m1, m2)
+	if diff != nil {
+		t.Errorf("expected nil, got %v", diff)
+	}
+}
+
+func TestDiffValues(t *testing.T) {
+	m1 := map[string]int{"a": 1, "b": 2}
+	m2 := map[string]int{"a": 1, "b": 3}
+	diff := DiffValues(m1, m2)
+
+	if len(diff) != 1 {
+		t.Errorf("expected 1 element, got %d", len(diff))
+	}
+	if diff["b"] != 2 {
+		t.Errorf("expected diff['b']=2, got %d", diff["b"])
+	}
+}
+
+func TestIntersection(t *testing.T) {
+	m1 := map[string]int{"a": 1, "b": 2, "c": 3}
+	m2 := map[string]int{"b": 20, "c": 30, "d": 40}
+	inter := Intersection(m1, m2)
+
+	if len(inter) != 2 {
+		t.Errorf("expected 2 elements, got %d", len(inter))
+	}
+	if inter["b"] != 2 {
+		t.Errorf("expected inter['b']=2, got %d", inter["b"])
+	}
+	if inter["c"] != 3 {
+		t.Errorf("expected inter['c']=3, got %d", inter["c"])
+	}
+}
+
+func TestIntersection_Nil(t *testing.T) {
+	var m1 map[string]int
+	m2 := map[string]int{"a": 1}
+	inter := Intersection(m1, m2)
+	if inter != nil {
+		t.Errorf("expected nil, got %v", inter)
+	}
+}
+
+func TestIntersectionValues(t *testing.T) {
+	m1 := map[string]int{"a": 1, "b": 2}
+	m2 := map[string]int{"a": 1, "b": 3}
+	inter := IntersectionValues(m1, m2)
+
+	if len(inter) != 1 {
+		t.Errorf("expected 1 element, got %d", len(inter))
+	}
+	if inter["a"] != 1 {
+		t.Errorf("expected inter['a']=1, got %d", inter["a"])
+	}
+}
+
+func TestTransform(t *testing.T) {
+	m := map[int]string{1: "one", 2: "two"}
+	result := Transform(m, func(k int, v string) (string, int) {
+		return v, k
+	})
+
+	if len(result) != 2 {
+		t.Errorf("expected 2 elements, got %d", len(result))
+	}
+	if result["one"] != 1 {
+		t.Errorf("expected result['one']=1, got %d", result["one"])
+	}
+	if result["two"] != 2 {
+		t.Errorf("expected result['two']=2, got %d", result["two"])
+	}
+}
+
+func TestTransform_Nil(t *testing.T) {
+	var m map[int]string
+	result := Transform(m, func(k int, v string) (string, int) {
+		return v, k
+	})
+	if result != nil {
+		t.Errorf("expected nil, got %v", result)
+	}
+}
+
+func TestPop(t *testing.T) {
+	m := map[string]int{"a": 1, "b": 2}
+	v, ok := Pop(m, "a")
+
+	if !ok {
+		t.Error("expected ok to be true")
+	}
+	if v != 1 {
+		t.Errorf("expected v=1, got %d", v)
+	}
+	if len(m) != 1 {
+		t.Errorf("expected map length 1, got %d", len(m))
+	}
+	if _, ok := m["a"]; ok {
+		t.Error("expected key 'a' to be deleted")
+	}
+}
+
+func TestPop_NotFound(t *testing.T) {
+	m := map[string]int{"a": 1}
+	v, ok := Pop(m, "b")
+
+	if ok {
+		t.Error("expected ok to be false")
+	}
+	if v != 0 {
+		t.Errorf("expected v=0, got %d", v)
+	}
+	if len(m) != 1 {
+		t.Errorf("expected map length 1, got %d", len(m))
+	}
+}
+
+func TestPopOr(t *testing.T) {
+	m := map[string]int{"a": 1}
+	v := PopOr(m, "a", 0)
+	if v != 1 {
+		t.Errorf("expected v=1, got %d", v)
+	}
+
+	v = PopOr(m, "b", 99)
+	if v != 99 {
+		t.Errorf("expected v=99, got %d", v)
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	m := map[string]int{"count": 5}
+	ok := Update(m, "count", func(v int) int { return v + 1 })
+
+	if !ok {
+		t.Error("expected ok to be true")
+	}
+	if m["count"] != 6 {
+		t.Errorf("expected m['count']=6, got %d", m["count"])
+	}
+}
+
+func TestUpdate_NotFound(t *testing.T) {
+	m := map[string]int{"count": 5}
+	ok := Update(m, "other", func(v int) int { return v + 1 })
+
+	if ok {
+		t.Error("expected ok to be false")
+	}
+	if len(m) != 1 {
+		t.Errorf("expected map length 1, got %d", len(m))
+	}
+}
+
+func TestUpdateOrInsert(t *testing.T) {
+	m := map[string]int{}
+
+	// 插入新值
+	v := UpdateOrInsert(m, "count", 0, func(v int) int { return v + 1 })
+	if v != 1 {
+		t.Errorf("expected v=1, got %d", v)
+	}
+	if m["count"] != 1 {
+		t.Errorf("expected m['count']=1, got %d", m["count"])
+	}
+
+	// 更新已有值
+	v = UpdateOrInsert(m, "count", 0, func(v int) int { return v + 1 })
+	if v != 2 {
+		t.Errorf("expected v=2, got %d", v)
+	}
+	if m["count"] != 2 {
+		t.Errorf("expected m['count']=2, got %d", m["count"])
+	}
+}
+
+func TestSymmetricDiff(t *testing.T) {
+	m1 := map[string]int{"a": 1, "b": 2}
+	m2 := map[string]int{"b": 2, "c": 3}
+	diff := SymmetricDiff(m1, m2)
+
+	if len(diff) != 2 {
+		t.Errorf("expected 2 elements, got %d", len(diff))
+	}
+	if diff["a"] != 1 {
+		t.Errorf("expected diff['a']=1, got %d", diff["a"])
+	}
+	if diff["c"] != 3 {
+		t.Errorf("expected diff['c']=3, got %d", diff["c"])
+	}
+}
+
+func TestCollect(t *testing.T) {
+	type User struct {
+		ID   int
+		Name string
+	}
+	users := []User{{ID: 1, Name: "Alice"}, {ID: 2, Name: "Bob"}}
+	byID := Collect(users, func(u User) (int, string) {
+		return u.ID, u.Name
+	})
+
+	if len(byID) != 2 {
+		t.Errorf("expected 2 elements, got %d", len(byID))
+	}
+	if byID[1] != "Alice" {
+		t.Errorf("expected byID[1]='Alice', got %s", byID[1])
+	}
+	if byID[2] != "Bob" {
+		t.Errorf("expected byID[2]='Bob', got %s", byID[2])
+	}
+}
+
+func TestCollect_Nil(t *testing.T) {
+	var users []struct{ ID int }
+	result := Collect(users, func(u struct{ ID int }) (int, int) {
+		return u.ID, u.ID
+	})
+	if result != nil {
+		t.Errorf("expected nil, got %v", result)
+	}
+}
+
+func TestCollectByKey(t *testing.T) {
+	type User struct {
+		ID   int
+		Name string
+	}
+	users := []User{{ID: 1, Name: "Alice"}, {ID: 2, Name: "Bob"}}
+	byID := CollectByKey(users, func(u User) int { return u.ID })
+
+	if len(byID) != 2 {
+		t.Errorf("expected 2 elements, got %d", len(byID))
+	}
+	if byID[1].Name != "Alice" {
+		t.Errorf("expected byID[1].Name='Alice', got %s", byID[1].Name)
+	}
+}

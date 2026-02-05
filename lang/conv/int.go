@@ -86,11 +86,83 @@ func Int64(any any) int64 {
 	}
 }
 
+// TryInt64 将任意类型转换为 int64，返回是否成功
+//
+// 与 Int64 不同，此函数可以区分转换失败和实际值为 0 的情况
+//
+// 示例:
+//
+//	v, ok := conv.TryInt64("123")  // 123, true
+//	v, ok := conv.TryInt64("abc")  // 0, false
+//	v, ok := conv.TryInt64("0")    // 0, true
+func TryInt64(any any) (int64, bool) {
+	if any == nil {
+		return 0, false
+	}
+	switch value := any.(type) {
+	case int:
+		return int64(value), true
+	case int8:
+		return int64(value), true
+	case int16:
+		return int64(value), true
+	case int32:
+		return int64(value), true
+	case int64:
+		return value, true
+	case uint:
+		if uint64(value) > math.MaxInt64 {
+			return 0, false
+		}
+		return int64(value), true
+	case uint8:
+		return int64(value), true
+	case uint16:
+		return int64(value), true
+	case uint32:
+		return int64(value), true
+	case uint64:
+		if value > math.MaxInt64 {
+			return 0, false
+		}
+		return int64(value), true
+	case float32:
+		return int64(value), true
+	case float64:
+		return int64(value), true
+	case bool:
+		if value {
+			return 1, true
+		}
+		return 0, true
+	case []byte:
+		v, err := strconv.ParseInt(string(value), 10, 64)
+		return v, err == nil
+	case string:
+		v, err := strconv.ParseInt(value, 10, 64)
+		return v, err == nil
+	default:
+		v, err := strconv.ParseInt(String(any), 10, 64)
+		return v, err == nil
+	}
+}
+
+// TryInt 将任意类型转换为 int，返回是否成功
+func TryInt(any any) (int, bool) {
+	v, ok := TryInt64(any)
+	return int(v), ok
+}
+
 // Int32 将任意类型转换为 int32
 //
-// 转换失败时返回 0
+// 转换失败或值超出 int32 范围时返回 0
 func Int32(any any) int32 {
-	return int32(Int64(any))
+	v := Int64(any)
+	// 防止溢出：超出 int32 范围时返回 0
+	if v > math.MaxInt32 || v < math.MinInt32 {
+		return 0
+	}
+	return int32(v)
 }
 
 // Uint 将任意类型转换为 uint
@@ -172,9 +244,14 @@ func Uint64(any any) uint64 {
 
 // Uint32 将任意类型转换为 uint32
 //
-// 转换失败时返回 0
+// 转换失败或值超出 uint32 范围时返回 0
 func Uint32(any any) uint32 {
-	return uint32(Uint64(any))
+	v := Uint64(any)
+	// 防止溢出：超出 uint32 范围时返回 0
+	if v > math.MaxUint32 {
+		return 0
+	}
+	return uint32(v)
 }
 
 // Bool 将任意类型转换为布尔值

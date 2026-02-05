@@ -182,6 +182,38 @@ func (cb *CircuitBreaker) Stats() CircuitBreakerStats {
 	}
 }
 
+// callbackTimeout 状态变化回调的超时时间
+const callbackTimeout = 5 * time.Second
+
+// safeCallback 安全地执行状态变化回调（带超时和 panic 恢复）
+func safeCallback(name string, callback func(name string, from, to CircuitState), from, to CircuitState) {
+	if callback == nil {
+		return
+	}
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				GetLogger().Error(fmt.Sprintf("[CircuitBreaker] %s: callback panic: %v", name, r))
+			}
+		}()
+
+		// 使用带超时的执行
+		done := make(chan struct{})
+		go func() {
+			callback(name, from, to)
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// 正常完成
+		case <-time.After(callbackTimeout):
+			GetLogger().Error(fmt.Sprintf("[CircuitBreaker] %s: callback timeout after %v", name, callbackTimeout))
+		}
+	}()
+}
+
 // 状态转换
 func (cb *CircuitBreaker) toClosed() {
 	if cb.state == StateClosed {
@@ -194,10 +226,9 @@ func (cb *CircuitBreaker) toClosed() {
 	cb.halfOpenRequests = 0
 	cb.consecutiveErrors = 0
 	GetLogger().Log(fmt.Sprintf("[CircuitBreaker] %s: %s -> CLOSED", cb.name, oldState))
-	if cb.config.OnStateChange != nil {
-		go cb.config.OnStateChange(cb.name, oldState, StateClosed)
-	}
+	safeCallback(cb.name, cb.config.OnStateChange, oldState, StateClosed)
 }
+
 func (cb *CircuitBreaker) toOpen() {
 	if cb.state == StateOpen {
 		return
@@ -208,10 +239,9 @@ func (cb *CircuitBreaker) toOpen() {
 	cb.halfOpenRequests = 0
 	GetLogger().Log(fmt.Sprintf("[CircuitBreaker] %s: %s -> OPEN (failures=%d)",
 		cb.name, oldState, cb.failureCount))
-	if cb.config.OnStateChange != nil {
-		go cb.config.OnStateChange(cb.name, oldState, StateOpen)
-	}
+	safeCallback(cb.name, cb.config.OnStateChange, oldState, StateOpen)
 }
+
 func (cb *CircuitBreaker) toHalfOpen() {
 	if cb.state == StateHalfOpen {
 		return
@@ -221,9 +251,7 @@ func (cb *CircuitBreaker) toHalfOpen() {
 	cb.successCount = 0
 	cb.halfOpenRequests = 0
 	GetLogger().Log(fmt.Sprintf("[CircuitBreaker] %s: %s -> HALF_OPEN", cb.name, oldState))
-	if cb.config.OnStateChange != nil {
-		go cb.config.OnStateChange(cb.name, oldState, StateHalfOpen)
-	}
+	safeCallback(cb.name, cb.config.OnStateChange, oldState, StateHalfOpen)
 }
 
 // CircuitBreakerStats 熔断器统计

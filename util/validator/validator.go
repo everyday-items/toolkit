@@ -11,9 +11,10 @@ import (
 
 // 预编译正则表达式（避免每次调用重新编译）
 var (
-	phoneRegex   = regexp.MustCompile(`^1[3-9]\d{9}$`)
-	idCardRegex  = regexp.MustCompile(`^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$`)
-	numericRegex = regexp.MustCompile(`^\d+$`)
+	phoneRegex    = regexp.MustCompile(`^1[3-9]\d{9}$`)
+	idCardRegex   = regexp.MustCompile(`^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$`)
+	numericRegex  = regexp.MustCompile(`^\d+$`)
+	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 )
 
 // Email 验证邮箱格式
@@ -215,6 +216,5 @@ func Username(username string) bool {
 	if len(username) < 4 || len(username) > 20 {
 		return false
 	}
-	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_]+$`, username)
-	return matched
+	return usernameRegex.MatchString(username)
 }

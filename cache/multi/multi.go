@@ -209,8 +209,19 @@ func (c *Cache) GetOrLoad(
 		}
 
 		// 判断是否是 NotFound 错误
+		// 注意：这里的 NotFound 可能来自：
+		// 1. 某一层缓存返回的 NotFound（如负缓存）
+		// 2. 最终 loader 返回的 NotFound
+		// 对于第一种情况，应该继续查询下一层（可能其他层有数据）
+		// 只有在最后一层返回 NotFound 时才表示确实没有数据
 		if c.isNotFound(err) {
-			return ErrNotFound
+			if i == len(c.layers)-1 {
+				// 最后一层返回 NotFound，确实没有数据
+				return ErrNotFound
+			}
+			// 非最后一层返回 NotFound，记录并继续尝试下一层
+			c.onError(ctx, layer.Name, "get", key, err)
+			continue
 		}
 
 		// 其他错误，记录并继续尝试下一层
@@ -280,20 +291,19 @@ func (c *Cache) loadFromNextLayers(
 // backfillTimeout 回填操作的超时时间
 const backfillTimeout = 5 * time.Second
 
-// backfillAll 回填到所有层
-func (c *Cache) backfillAll(ctx context.Context, key string, value any) {
-	// 创建带超时的 context，继承原始 ctx 的取消信号
-	backfillCtx, cancel := context.WithTimeout(ctx, backfillTimeout)
-
-	// 启动等待 goroutine，确保 cancel 一定会被调用（防止 goroutine 泄漏）
-	done := make(chan struct{})
+// backfillAll 回填到所有层（异步执行，不阻塞主流程）
+func (c *Cache) backfillAll(_ context.Context, key string, value any) {
+	// 异步执行回填，不阻塞主流程
 	go func() {
+		// 使用独立的 context，不继承原始请求的取消信号
+		// 这样即使原始请求被取消，回填操作仍能完成，确保缓存一致性
+		backfillCtx, cancel := context.WithTimeout(context.Background(), backfillTimeout)
 		defer cancel() // 确保 cancel 总是被调用
 
 		var wg sync.WaitGroup
 		for _, layer := range c.layers {
 			wg.Add(1)
-			// 使用 goroutine 异步回填，避免阻塞主流程
+			// 使用 goroutine 异步回填
 			go func(l LayerConfig) {
 				defer wg.Done()
 				// 创建一个临时变量接收数据（避免并发问题）
@@ -302,34 +312,21 @@ func (c *Cache) backfillAll(ctx context.Context, key string, value any) {
 					return value, nil
 				})
 				if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-					c.onError(ctx, l.Name, "backfill", key, err)
+					c.onError(backfillCtx, l.Name, "backfill", key, err)
 				}
 			}(layer)
 		}
 
 		wg.Wait()
-		close(done)
-	}()
-
-	// 监听原始 context 取消，确保及时清理
-	go func() {
-		select {
-		case <-done:
-			// 正常完成
-		case <-ctx.Done():
-			// 原始 context 被取消，cancel 会在 defer 中调用
-		}
 	}()
 }
 
-// backfillRange 回填到指定范围的层
-func (c *Cache) backfillRange(ctx context.Context, key string, value any, start, end int) {
-	// 继承原始 ctx 的取消信号
-	backfillCtx, cancel := context.WithTimeout(ctx, backfillTimeout)
-
-	// 启动等待 goroutine，确保 cancel 一定会被调用
-	done := make(chan struct{})
+// backfillRange 回填到指定范围的层（异步执行，不阻塞主流程）
+func (c *Cache) backfillRange(_ context.Context, key string, value any, start, end int) {
+	// 异步执行回填，不阻塞主流程
 	go func() {
+		// 使用独立的 context，不继承原始请求的取消信号
+		backfillCtx, cancel := context.WithTimeout(context.Background(), backfillTimeout)
 		defer cancel() // 确保 cancel 总是被调用
 
 		var wg sync.WaitGroup
@@ -343,21 +340,12 @@ func (c *Cache) backfillRange(ctx context.Context, key string, value any, start,
 					return value, nil
 				})
 				if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-					c.onError(ctx, l.Name, "backfill", key, err)
+					c.onError(backfillCtx, l.Name, "backfill", key, err)
 				}
 			}(layer)
 		}
 
 		wg.Wait()
-		close(done)
-	}()
-
-	// 监听原始 context 取消
-	go func() {
-		select {
-		case <-done:
-		case <-ctx.Done():
-		}
 	}()
 }
 

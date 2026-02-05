@@ -94,6 +94,7 @@ func (s *Snowflake) Generate() int64 {
 // 当检测到时钟回拨且超过最大等待时间时，返回 ErrClockSkew。
 func (s *Snowflake) GenerateSafe() (int64, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	timestamp := s.currentTimestamp()
 
@@ -104,31 +105,19 @@ func (s *Snowflake) GenerateSafe() (int64, error) {
 
 		// 检查是否超过最大等待时间
 		if skewDuration > s.maxClockSkewWait {
-			s.mu.Unlock()
 			return 0, ErrClockSkew
 		}
 
-		// 记录需要追赶到的时间戳
-		targetTimestamp := s.lastTimestamp
-		s.mu.Unlock() // 释放锁，避免阻塞其他 goroutine
-
-		// 等待直到时间追上（有限等待，不持有锁）
+		// 等待直到时间追上（持有锁，防止其他 goroutine 产生不一致的 ID）
+		// 时钟回拨是极其罕见的情况，短暂阻塞是可接受的
 		deadline := time.Now().Add(s.maxClockSkewWait)
-		for timestamp < targetTimestamp {
+		for timestamp < s.lastTimestamp {
 			if time.Now().After(deadline) {
 				return 0, ErrClockSkew
 			}
+			// 短暂休眠避免 busy-wait
 			time.Sleep(time.Millisecond)
 			timestamp = s.currentTimestamp()
-		}
-
-		// 重新获取锁并重新检查状态
-		s.mu.Lock()
-		timestamp = s.currentTimestamp()
-		// 如果时间再次回拨（可能性很小），直接报错
-		if timestamp < s.lastTimestamp {
-			s.mu.Unlock()
-			return 0, ErrClockSkew
 		}
 	}
 
@@ -151,7 +140,6 @@ func (s *Snowflake) GenerateSafe() (int64, error) {
 		(s.workerID << workerIDShift) |
 		s.sequence
 
-	s.mu.Unlock()
 	return id, nil
 }
 

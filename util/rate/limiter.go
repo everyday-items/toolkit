@@ -224,10 +224,18 @@ func (sw *SlidingWindow) Wait() time.Duration {
 		}
 
 		// 计算需要等待的时间（等待最早的请求过期）
-		oldestRequest := sw.requests[0]
-		waitTime := sw.window - now.Sub(oldestRequest)
+		// 安全检查：如果 requests 为空（理论上不应该发生），最小等待 1ms
+		var waitTime time.Duration
+		if len(sw.requests) > 0 {
+			oldestRequest := sw.requests[0]
+			elapsed := now.Sub(oldestRequest)
+			if elapsed < sw.window {
+				waitTime = sw.window - elapsed
+			}
+		}
+		// 确保 waitTime 为正数且至少 1ms，防止负数或零值导致的问题
 		if waitTime < time.Millisecond {
-			waitTime = time.Millisecond // 最小等待 1ms
+			waitTime = time.Millisecond
 		}
 		sw.mu.Unlock()
 

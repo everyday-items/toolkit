@@ -59,6 +59,10 @@ type Logger interface {
 // DefaultConfig returns the default configuration
 func DefaultConfig() Config {
 	numCPU := int32(runtime.NumCPU())
+	// 确保 numCPU 至少为 1（防御性编程）
+	if numCPU < 1 {
+		numCPU = 1
+	}
 	return Config{
 		MaxWorkers:          numCPU * 4,
 		MinWorkers:          numCPU,

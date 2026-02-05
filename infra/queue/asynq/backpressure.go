@@ -263,12 +263,16 @@ func (bc *BackpressureController) handleStateChange(queue string, oldState, newS
 func (bc *BackpressureController) AllowEnqueue(queue string) error {
 	bc.mu.RLock()
 	bp, ok := bc.states[queue]
-	bc.mu.RUnlock()
 	if !ok {
+		bc.mu.RUnlock()
 		// 未监控的队列，允许入队
 		return nil
 	}
-	if bp.State == StateCritical {
+	// 在持有 RLock 时读取 state，避免 TOCTOU 竞态
+	state := bp.State
+	bc.mu.RUnlock()
+
+	if state == StateCritical {
 		bc.mu.Lock()
 		bc.rejectCounts[queue]++
 		bc.mu.Unlock()

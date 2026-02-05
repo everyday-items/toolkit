@@ -381,11 +381,7 @@ func TestCache_OnError(t *testing.T) {
 
 	// 模拟损坏的缓存数据
 	cache.mu.Lock()
-	cache.items["corrupt"] = localItem{
-		packed:     []byte{}, // 空数据，会触发 ErrCorrupt
-		expireAt:   time.Now().Add(time.Hour),
-		accessedAt: time.Now(),
-	}
+	cache.items["corrupt"] = newLocalItem([]byte{}, time.Now().Add(time.Hour), time.Now()) // 空数据，会触发 ErrCorrupt
 	cache.mu.Unlock()
 
 	var user User

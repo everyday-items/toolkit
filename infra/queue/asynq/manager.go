@@ -219,8 +219,9 @@ func (m *Manager) Start(ctx context.Context) error {
 		return nil
 	}
 	m.started = true
-	m.mu.Unlock()
+	// 在持有锁的情况下创建 ctx 和 cancel，避免与 Stop() 竞态
 	m.ctx, m.cancel = context.WithCancel(ctx)
+	m.mu.Unlock()
 	// 创建 Server
 	m.server = asynq.NewServer(
 		m.redisOpt,

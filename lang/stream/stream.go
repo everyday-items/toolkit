@@ -190,8 +190,7 @@ func (s Stream[T]) Map(mapper func(T) T) Stream[T] {
 // 返回:
 //   - Stream[T]: 去重后的 Stream
 //
-// 注意: 元素必须是 comparable 类型（如 int, string, 结构体等）。
-// 不支持 slice、map、function 等不可比较类型，对这些类型会 panic。
+// 注意: 对于不可比较类型（slice、map、function 等），这些元素会被直接保留（无法去重）。
 // 对于大数据集可能性能不佳。
 //
 // 示例:
@@ -209,8 +208,23 @@ func (s Stream[T]) Distinct() Stream[T] {
 			result := make([]T, 0, len(src))
 			for _, v := range src {
 				key := any(v)
-				if !seen[key] {
+				// 尝试将元素作为 map key，如果元素不可比较会 panic
+				// 使用 defer+recover 捕获 panic，不可比较的元素直接保留
+				isDuplicate := func() (dup bool) {
+					defer func() {
+						if r := recover(); r != nil {
+							// 不可比较的类型，无法去重，标记为非重复
+							dup = false
+						}
+					}()
+					if seen[key] {
+						return true
+					}
 					seen[key] = true
+					return false
+				}()
+
+				if !isDuplicate {
 					result = append(result, v)
 				}
 			}

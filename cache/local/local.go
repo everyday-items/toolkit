@@ -200,12 +200,32 @@ func ensureDestPtr(dest any) error {
 type localItem struct {
 	packed     []byte
 	expireAt   time.Time
-	accessedAt time.Time // LRU: 最后访问时间
+	accessedAt atomic.Int64 // LRU: 最后访问时间（UnixNano），使用原子操作支持读锁下更新
+}
+
+// newLocalItem 创建新的 localItem
+func newLocalItem(packed []byte, expireAt time.Time, accessedAt time.Time) *localItem {
+	item := &localItem{
+		packed:   packed,
+		expireAt: expireAt,
+	}
+	item.accessedAt.Store(accessedAt.UnixNano())
+	return item
+}
+
+// getAccessedAt 获取访问时间
+func (i *localItem) getAccessedAt() time.Time {
+	return time.Unix(0, i.accessedAt.Load())
+}
+
+// setAccessedAt 设置访问时间（原子操作）
+func (i *localItem) setAccessedAt(t time.Time) {
+	i.accessedAt.Store(t.UnixNano())
 }
 
 type Cache struct {
 	mu         sync.RWMutex
-	items      map[string]localItem
+	items      map[string]*localItem // 使用指针以支持读锁下原子更新 accessedAt
 	sf         singleflight.Group
 	opts       Options
 	maxEntries int
@@ -231,7 +251,7 @@ func NewCache(maxEntries int, opts ...Option) *Cache {
 // NewCacheWithCleanup 创建本地缓存（可指定清理间隔）
 func NewCacheWithCleanup(maxEntries int, cleanupInterval time.Duration, opts ...Option) *Cache {
 	c := &Cache{
-		items:           make(map[string]localItem),
+		items:           make(map[string]*localItem),
 		opts:            applyOptions(opts...),
 		maxEntries:      maxEntries,
 		cleanupInterval: cleanupInterval,
@@ -336,33 +356,40 @@ func (c *Cache) Del(ctx context.Context, keys ...string) error {
 func (c *Cache) getItem(fullKey string) ([]byte, bool, error) {
 	now := c.opts.Now()
 
-	// 使用写锁进行所有操作，避免竞态条件
-	// 虽然牺牲了一些读取性能，但确保了数据一致性
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+	// 使用读锁进行读取操作
+	// accessedAt 使用原子操作更新，无需写锁
+	c.mu.RLock()
 	item, ok := c.items[fullKey]
 	if !ok {
+		c.mu.RUnlock()
 		return nil, false, nil
 	}
 
-	// 检查过期
+	// 检查过期（需要写锁删除，升级锁）
 	if !item.expireAt.IsZero() && now.After(item.expireAt) {
-		delete(c.items, fullKey)
+		c.mu.RUnlock()
+		// 升级到写锁进行删除
+		c.mu.Lock()
+		// 双重检查：在获取写锁期间可能已被其他 goroutine 删除
+		if existingItem, exists := c.items[fullKey]; exists && now.After(existingItem.expireAt) {
+			delete(c.items, fullKey)
+		}
+		c.mu.Unlock()
 		return nil, false, nil
 	}
 
 	if len(item.packed) == 0 {
+		c.mu.RUnlock()
 		return nil, false, ErrCorrupt
 	}
 
-	// LRU: 原子更新访问时间（在同一个锁内）
-	item.accessedAt = now
-	c.items[fullKey] = item
+	// LRU: 原子更新访问时间（无需写锁）
+	item.setAccessedAt(now)
 
 	// 返回副本，避免外部修改
 	cp := make([]byte, len(item.packed))
 	copy(cp, item.packed)
+	c.mu.RUnlock()
 	return cp, true, nil
 }
 
@@ -391,11 +418,7 @@ func (c *Cache) setItemWithGen(fullKey string, packed []byte, ttl time.Duration,
 		return
 	}
 
-	c.items[fullKey] = localItem{
-		packed:     cp,
-		expireAt:   exp,
-		accessedAt: now, // LRU: 初始化访问时间
-	}
+	c.items[fullKey] = newLocalItem(cp, exp, now)
 	c.evictIfNeededLocked(now)
 }
 
@@ -442,7 +465,7 @@ func (c *Cache) evictIfNeededLocked(now time.Time) {
 	}
 	candidates := make([]keyTime, 0, len(c.items))
 	for k, it := range c.items {
-		candidates = append(candidates, keyTime{k, it.accessedAt})
+		candidates = append(candidates, keyTime{k, it.getAccessedAt()})
 	}
 
 	// 部分排序：只需要找到最小的 needDel 个元素
@@ -545,7 +568,7 @@ func (c *Cache) Len() int {
 func (c *Cache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.items = make(map[string]localItem)
+	c.items = make(map[string]*localItem)
 	c.generation++ // 递增版本号，使进行中的 singleflight 写入失效
 }
 

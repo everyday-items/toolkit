@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -16,6 +17,10 @@ var (
 	numericRegex  = regexp.MustCompile(`^\d+$`)
 	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 )
+
+// regexpCache 正则表达式缓存
+// 用于缓存 Match 函数中动态编译的正则表达式
+var regexpCache sync.Map
 
 // Email 验证邮箱格式
 func Email(email string) bool {
@@ -169,10 +174,34 @@ func NotIn[T comparable](value T, list []T) bool {
 	return !In(value, list)
 }
 
+// regexpError 用于标记无效的正则表达式（避免重复编译）
+type regexpError struct{}
+
 // Match 验证字符串是否匹配正则表达式
+//
+// 注意：该函数会缓存编译后的正则表达式以提高性能。
+// 对于恶意构造的正则表达式可能存在 ReDoS 风险，
+// 建议只使用受信任的正则表达式模式。
+// 如果正则表达式无效，返回 false。
 func Match(str, pattern string) bool {
-	matched, _ := regexp.MatchString(pattern, str)
-	return matched
+	// 从缓存获取或编译正则表达式
+	if cached, ok := regexpCache.Load(pattern); ok {
+		// 检查是否是无效正则表达式的标记
+		if _, isErr := cached.(regexpError); isErr {
+			return false
+		}
+		return cached.(*regexp.Regexp).MatchString(str)
+	}
+
+	// 编译正则表达式
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		// 缓存无效正则表达式的标记，避免重复编译
+		regexpCache.Store(pattern, regexpError{})
+		return false
+	}
+	regexpCache.Store(pattern, re)
+	return re.MatchString(str)
 }
 
 // IsEmpty 验证字符串是否为空

@@ -11,7 +11,10 @@
 ✅ **接口驱动** - 易于扩展和测试
 ✅ **零拷贝优化** - 高性能字符串/字节操作
 ✅ **完整监控** - Prometheus 指标支持
-✅ **泛型支持** - Go 1.18+ 泛型实现类型安全
+✅ **泛型支持** - Go 1.22+ 泛型实现类型安全
+✅ **安全优先** - SSRF 防护、HMAC 恒定时间比较、AES-GCM 推荐
+✅ **AI 生态** - OpenAI/Claude/Gemini 流式响应处理
+✅ **多层缓存** - Local → Redis → DB 三层防护
 
 ## 快速开始
 
@@ -101,6 +104,229 @@ timex.StartOfDay(t)                 // 当天 00:00:00
 timex.EndOfMonth(t)                 // 月末
 timex.DaysBetween(t1, t2)           // 间隔天数
 timex.Age(birthday)                 // 计算年龄
+
+// Duration 格式化
+timex.FormatDuration(2*time.Hour + 30*time.Minute)  // "2h30m"
+d, _ := timex.ParseDuration("1d2h30m")               // 支持天数
+
+// 时区支持
+t := timex.NowShanghai()            // 上海时间
+t = timex.InShanghai(time.Now())    // 转换为上海时间
+```
+
+### 条件工具
+
+```go
+import "github.com/everyday-items/toolkit/lang/cond"
+
+// If 三元表达式
+result := cond.If(age >= 18, "成年", "未成年")
+
+// IfFunc 惰性求值
+result := cond.IfFunc(expensive,
+    func() string { return compute() },
+    func() string { return "default" },
+)
+
+// IfZero 零值判断
+name := cond.IfZero(user.Name, "Anonymous")
+
+// Coalesce 返回第一个非零值
+value := cond.Coalesce(a, b, c, defaultVal)
+
+// Switch 类型安全的 switch
+result := cond.Switch[string, string](status).
+    Case("pending", "等待中").
+    Case("running", "运行中").
+    Case("done", "已完成").
+    Default("未知")
+```
+
+### 元组类型
+
+```go
+import "github.com/everyday-items/toolkit/lang/tuple"
+
+// 创建元组
+t2 := tuple.T2("name", 42)
+t3 := tuple.T3("x", "y", "z")
+
+// 解构
+a, b := t2.Unpack()
+
+// Swap
+swapped := t2.Swap()  // Tuple2[int, string]
+
+// Zip 合并两个切片
+names := []string{"Alice", "Bob"}
+ages := []int{20, 25}
+pairs := tuple.Zip2(names, ages)  // []Tuple2[string, int]
+
+// Unzip 分离
+names, ages = tuple.Unzip2(pairs)
+```
+
+### Optional 类型
+
+```go
+import "github.com/everyday-items/toolkit/lang/optional"
+
+// 创建 Option
+opt := optional.Some(42)
+empty := optional.None[int]()
+fromPtr := optional.FromPtr(ptr)  // nil 指针 → None
+
+// 检查和获取
+if opt.IsSome() {
+    value := opt.Unwrap()
+}
+value := opt.UnwrapOr(defaultVal)
+value := opt.UnwrapOrElse(func() int { return compute() })
+
+// 转换
+doubled := optional.Map(opt, func(n int) int { return n * 2 })
+result := optional.FlatMap(opt, func(n int) optional.Option[string] {
+    return optional.Some(strconv.Itoa(n))
+})
+
+// 过滤
+positive := opt.Filter(func(n int) bool { return n > 0 })
+```
+
+### Stream API
+
+```go
+import "github.com/everyday-items/toolkit/lang/stream"
+
+// 创建 Stream
+s := stream.Of(1, 2, 3, 4, 5)
+s := stream.FromSlice(slice)
+s := stream.Range(0, 100)
+s := stream.Generate(10, func(i int) int { return i * 2 })
+
+// 链式操作
+result := stream.Of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10).
+    Filter(func(n int) bool { return n%2 == 0 }).  // 偶数
+    Map(func(n int) int { return n * n }).          // 平方
+    Limit(3).                                        // 取前3个
+    Collect()                                        // [4, 16, 36]
+
+// 终端操作
+count := s.Count()
+sum := s.Reduce(0, func(a, b int) int { return a + b })
+first, ok := s.First()
+any := s.Any(func(n int) bool { return n > 10 })
+all := s.All(func(n int) bool { return n > 0 })
+
+// 类型转换
+strings := stream.MapTo(s, func(n int) string {
+    return strconv.Itoa(n)
+})
+
+// 分组
+groups := stream.GroupBy(users, func(u User) string {
+    return u.Department
+})
+```
+
+### 多错误聚合
+
+```go
+import "github.com/everyday-items/toolkit/lang/errorx"
+
+// MultiError 收集多个错误
+me := errorx.NewMultiError()
+me.Append(err1).Append(err2)
+if err := me.ErrorOrNil(); err != nil {
+    return err
+}
+
+// 并行执行
+me := errorx.Go(
+    func() error { return task1() },
+    func() error { return task2() },
+    func() error { return task3() },
+)
+
+// 限制并发数
+me := errorx.GoWithLimit(5,
+    func() error { return process(item1) },
+    func() error { return process(item2) },
+    // ... 更多任务
+)
+
+// 遍历错误链
+errorx.Walk(err, func(e error) bool {
+    if myErr, ok := e.(*MyError); ok {
+        handle(myErr)
+        return false  // 停止遍历
+    }
+    return true
+})
+```
+
+### 并发工具
+
+```go
+import "github.com/everyday-items/toolkit/lang/syncx"
+
+// ConcurrentMap - 泛型并发安全 Map
+m := syncx.NewConcurrentMap[string, int]()
+m.Store("count", 1)
+value, ok := m.Load("count")
+m.Update("count", func(v int) int { return v + 1 })  // 原子更新
+value := m.GetOrCompute("key", func() int { return expensive() })
+
+// Singleflight - 防止缓存击穿
+sf := syncx.NewSingleflight()
+result, err := sf.Do("user:123", func() (any, error) {
+    return db.GetUser(123)  // 多个并发请求只执行一次
+})
+
+// Semaphore - 信号量
+sem := syncx.NewSemaphore(10)  // 最多10个并发
+sem.Acquire()
+defer sem.Release()
+
+// Lazy - 延迟初始化
+config := syncx.NewLazy(func() *Config {
+    return loadConfigFromFile()
+})
+cfg := config.Get()  // 首次调用时初始化
+
+// Once - 泛型版 sync.Once
+once := syncx.NewOnce(func() *DB {
+    return connectDB()
+})
+db := once.Do()
+```
+
+### 切片增强
+
+```go
+import "github.com/everyday-items/toolkit/lang/slicex"
+
+// Partition 分区
+even, odd := slicex.Partition(nums, func(n int) bool {
+    return n%2 == 0
+})
+
+// 聚合操作
+min := slicex.Min(nums)
+max := slicex.Max(nums)
+sum := slicex.Sum(nums)
+avg := slicex.Average(nums)
+
+// Range 生成序列
+nums := slicex.Range(0, 10, 2)  // [0, 2, 4, 6, 8]
+
+// Shuffle 随机打乱
+slicex.Shuffle(slice)
+sample := slicex.Sample(slice, 5)  // 随机取5个
+
+// Channel 转换
+ch := slicex.ToChannel(slice)
+slice := slicex.FromChannel(ch)
 ```
 
 ### Context 工具
@@ -215,6 +441,57 @@ resp, _ := client.R().
 // 解析响应
 var users []User
 resp.JSON(&users)
+
+// SSRF 防护（阻止访问内网地址）
+client := httpx.NewClient(
+    httpx.WithSSRFProtection("api.trusted.com"),  // 可选白名单
+)
+resp, err := client.R().Get(userProvidedURL)
+if errors.Is(err, httpx.ErrSSRFBlocked) {
+    // 请求被拦截
+}
+```
+
+### SSE 服务端推送
+
+```go
+import "github.com/everyday-items/toolkit/net/sse"
+
+// 客户端 - 接收 SSE 事件
+client := sse.NewClient("https://api.example.com/events",
+    sse.WithTimeout(30*time.Second),
+    sse.WithLastEventID("last-id"),
+)
+stream, _ := client.Connect(ctx)
+defer stream.Close()
+
+for event := range stream.Events() {
+    fmt.Printf("Event: %s, Data: %s\n", event.Event, event.Data)
+    var data MyData
+    event.JSON(&data)
+}
+
+// 服务端 - 发送 SSE 事件
+func handler(w http.ResponseWriter, r *http.Request) {
+    writer := sse.NewWriter(w)
+    defer writer.Close()
+
+    for {
+        writer.Write(&sse.Event{
+            ID:    "1",
+            Event: "message",
+            Data:  "Hello, World!",
+        })
+        writer.WriteJSON(myData)
+        time.Sleep(time.Second)
+    }
+}
+
+// OpenAI 流式响应处理
+sse.ReadOpenAIStream(resp.Body, func(chunk ChatCompletion) error {
+    fmt.Print(chunk.Choices[0].Delta.Content)
+    return nil
+})
 ```
 
 ### IP 工具
@@ -284,6 +561,70 @@ hex := encoding.HexEncodeString("hello")
 // URL
 query := encoding.BuildQuery(map[string]string{"name": "test"})
 params, _ := encoding.ParseQuery("name=test&age=18")
+```
+
+### 反射工具
+
+```go
+import "github.com/everyday-items/toolkit/util/reflectx"
+
+// Struct ↔ Map 转换
+user := User{Name: "Alice", Age: 20}
+m := reflectx.StructToMap(user)  // map[string]any{"Name": "Alice", "Age": 20}
+
+var user2 User
+reflectx.MapToStruct(m, &user2)
+
+// 字段操作
+name, _ := reflectx.GetField(user, "Name")
+reflectx.SetField(&user, "Name", "Bob")
+
+// 深拷贝
+copied := reflectx.DeepCopy(original)
+
+// 工具函数
+reflectx.IsZero(value)
+reflectx.IsNil(value)
+reflectx.TypeName(value)  // "User"
+```
+
+### 结构体验证
+
+```go
+import "github.com/everyday-items/toolkit/util/validator"
+
+type User struct {
+    Name     string `validate:"required,min=2,max=50"`
+    Email    string `validate:"required,email"`
+    Age      int    `validate:"min=0,max=150"`
+    Password string `validate:"required,min=8"`
+    Role     string `validate:"oneof=admin user guest"`
+    Website  string `validate:"omitempty,url"`
+}
+
+// 验证
+v := validator.New()
+if err := v.Struct(user); err != nil {
+    for _, e := range err.(validator.ValidationErrors) {
+        fmt.Printf("字段 %s 验证失败: %s\n", e.Field, e.Tag)
+    }
+}
+
+// 支持的标签
+// required  - 必填
+// email     - 邮箱格式
+// url       - URL 格式
+// min=n     - 最小值/最小长度
+// max=n     - 最大值/最大长度
+// len=n     - 精确长度
+// oneof=a b - 枚举值
+// regexp=x  - 正则匹配
+// omitempty - 空值时跳过
+
+// 自定义验证规则
+v.RegisterRule("phone", func(value any) bool {
+    return validator.Phone(value.(string))
+})
 ```
 
 ### Poolx 协程池
@@ -499,61 +840,80 @@ s.All(func(n int) bool { return n > 0 })
 ## 项目结构
 
 ```
-gopkg/
-├── collection/         # 数据结构
+toolkit/
+├── ai/                 # AI 工具
+│   ├── streamx/       # 流式响应处理（OpenAI/Claude/Gemini）
+│   ├── tokenizer/     # Token 计数
+│   ├── template/      # Prompt 模板
+│   └── meter/         # 用量计量
+│
+├── cache/              # 缓存
+│   ├── local/         # 本地缓存（LRU）
+│   ├── redis/         # Redis 缓存
+│   └── multi/         # 多层缓存（防击穿/穿透/雪崩）
+│
+├── collection/         # 数据结构（零外部依赖）
 │   ├── list/          # 双向链表
 │   ├── queue/         # 队列（FIFO/双端/优先级）
 │   ├── set/           # 泛型 HashSet
 │   └── stack/         # 栈（LIFO）
 │
 ├── crypto/             # 加密工具
-│   ├── aes/           # AES 对称加密
+│   ├── aes/           # AES 加密（推荐 GCM）
 │   ├── rsa/           # RSA 非对称加密
-│   └── sign/          # 签名验签
-│
-├── lang/               # 语言增强（零外部依赖）
-│   ├── contextx/      # Context 工具
-│   ├── conv/          # 类型转换
-│   ├── stringx/       # 字符串扩展
-│   ├── timex/         # 时间工具
-│   ├── slicex/        # 切片工具（泛型）
-│   ├── mapx/          # Map 工具（泛型）
-│   ├── mathx/         # 数学工具（泛型）
-│   ├── errorx/        # 错误处理
-│   └── syncx/         # 并发工具
-│
-├── net/                # 网络工具
-│   ├── httpx/         # HTTP 客户端
-│   └── ip/            # IP 工具
-│
-├── util/               # 工具组件
-│   ├── config/        # 配置管理
-│   ├── encoding/      # 编码（Base64/Hex/URL）
-│   ├── env/           # 环境变量
-│   ├── logger/        # 日志（基于 slog）
-│   ├── poolx/         # 高性能协程池
-│   ├── hash/          # 哈希（MD5/SHA/Bcrypt）
-│   ├── idgen/         # ID 生成
-│   ├── rand/          # 随机数
-│   ├── retry/         # 重试机制
-│   ├── rate/          # 限流器
-│   ├── validator/     # 数据验证
-│   ├── pagination/    # 分页
-│   ├── file/          # 文件操作
-│   ├── json/          # JSON 辅助
-│   └── slice/         # 切片工具
-│
-├── cache/              # 缓存
-│   ├── local/         # 本地缓存（LRU）
-│   ├── redis/         # Redis 缓存
-│   └── multi/         # 多层缓存
+│   └── sign/          # HMAC 签名验签
 │
 ├── infra/              # 基础设施
 │   ├── db/            # 数据库
 │   │   ├── mysql/
-│   │   └── redis/
-│   └── queue/         # 消息队列
-│       └── asynq/
+│   │   ├── redis/
+│   │   ├── mongodb/
+│   │   ├── clickhouse/
+│   │   └── elasticsearch/
+│   ├── queue/         # 消息队列
+│   │   └── asynq/
+│   ├── observe/       # 可观测性
+│   ├── otel/          # OpenTelemetry
+│   └── prometheus/    # Prometheus 指标
+│
+├── lang/               # 语言增强（零外部依赖）
+│   ├── cond/          # 条件工具（If/Switch/Coalesce）
+│   ├── contextx/      # Context 工具
+│   ├── conv/          # 类型转换
+│   ├── errorx/        # 错误处理（MultiError/Walk）
+│   ├── mapx/          # Map 工具（泛型）
+│   ├── mathx/         # 数学工具（泛型）
+│   ├── optional/      # Option 类型
+│   ├── slicex/        # 切片工具（泛型）
+│   ├── stream/        # Stream API
+│   ├── stringx/       # 字符串扩展
+│   ├── syncx/         # 并发工具（ConcurrentMap/Semaphore/Lazy）
+│   ├── timex/         # 时间工具
+│   └── tuple/         # 元组类型（Tuple2/3/4）
+│
+├── net/                # 网络工具
+│   ├── httpx/         # HTTP 客户端（SSRF 防护）
+│   ├── ip/            # IP 工具
+│   └── sse/           # Server-Sent Events
+│
+├── util/               # 工具组件
+│   ├── circuit/       # 熔断器
+│   ├── config/        # 配置管理
+│   ├── encoding/      # 编码（Base64/Hex/URL）
+│   ├── env/           # 环境变量
+│   ├── file/          # 文件操作
+│   ├── hash/          # 哈希（MD5/SHA/Bcrypt）
+│   ├── idgen/         # ID 生成（Snowflake）
+│   ├── json/          # JSON 辅助
+│   ├── logger/        # 日志（基于 slog）
+│   ├── pagination/    # 分页
+│   ├── poolx/         # 高性能协程池
+│   ├── rand/          # 随机数
+│   ├── rate/          # 限流器
+│   ├── reflectx/      # 反射工具
+│   ├── retry/         # 重试机制
+│   ├── slice/         # 切片工具
+│   └── validator/     # 数据验证（含结构体标签）
 │
 └── examples/           # 使用示例
 ```
@@ -613,23 +973,39 @@ gopkg/
 ✅ 推荐：lang/stringx/, lang/timex/
 ```
 
-### 2. 清晰的分层
+### 2. 清晰的分层架构
 
 ```
-crypto (加密) → net (网络) → util (工具) → lang (零依赖)
-     ↓              ↓            ↓           ↓
-  外部依赖       可能依赖      可能依赖    纯标准库
+ai (AI工具) → infra (基础设施) → net (网络) → cache (缓存)
+     ↓              ↓                ↓            ↓
+  外部依赖       外部服务         可能依赖     可独立
+
+     ↓              ↓                ↓            ↓
+crypto (加密) → util (工具) → collection (数据结构) → lang (零依赖)
+     ↓              ↓                ↓                    ↓
+  x/crypto      可能依赖         纯标准库              纯标准库
 ```
 
-### 3. 接口优先
+**关键约束**: `lang/` 和 `collection/` 包必须保持零外部依赖。
 
-所有组件提供接口，易于 mock 和测试。
+### 3. 安全优先
+
+- AES-CBC/CTR 标记为 Deprecated，推荐 GCM
+- HMAC 验证使用恒定时间比较
+- PKCS7 填充验证防止时序攻击
+- HTTP 客户端内置 SSRF 防护
+- 签名验证支持时间戳过期和 nonce 防重放
 
 ### 4. 性能优化
 
 - 零拷贝字符串操作（unsafe）
 - 对象池和缓存复用
 - 最小化反射使用
+- Singleflight 防止缓存击穿
+
+### 5. 泛型优先
+
+所有集合和工具函数优先使用泛型实现类型安全。
 
 ## 依赖
 
@@ -639,9 +1015,12 @@ github.com/hibiken/asynq           # 任务队列
 github.com/redis/go-redis/v9       # Redis 客户端
 github.com/prometheus/client_golang # 监控指标
 golang.org/x/sync                  # singleflight
+golang.org/x/crypto                # 加密扩展
+github.com/bytedance/gopkg         # goroutine 池
+github.com/google/uuid             # UUID 生成
 ```
 
-**注意**：`lang/` 包零外部依赖，只使用 Go 标准库。
+**注意**：`lang/` 和 `collection/` 包零外部依赖，只使用 Go 标准库。
 
 ## 开发
 

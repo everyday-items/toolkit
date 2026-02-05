@@ -282,58 +282,82 @@ const backfillTimeout = 5 * time.Second
 
 // backfillAll 回填到所有层
 func (c *Cache) backfillAll(ctx context.Context, key string, value any) {
-	var wg sync.WaitGroup
 	// 创建带超时的 context，继承原始 ctx 的取消信号
-	// 使用较短的超时：原始 ctx 剩余时间 vs backfillTimeout
 	backfillCtx, cancel := context.WithTimeout(ctx, backfillTimeout)
 
-	for _, layer := range c.layers {
-		wg.Add(1)
-		// 使用 goroutine 异步回填，避免阻塞主流程
-		go func(l LayerConfig) {
-			defer wg.Done()
-			// 创建一个临时变量接收数据（避免并发问题）
-			var temp any
-			err := l.Layer.GetOrLoad(backfillCtx, key, l.TTL, &temp, func(ctx context.Context) (any, error) {
-				return value, nil
-			})
-			if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-				c.onError(ctx, l.Name, "backfill", key, err)
-			}
-		}(layer)
-	}
-
-	// 在新 goroutine 中等待完成并取消 context
+	// 启动等待 goroutine，确保 cancel 一定会被调用（防止 goroutine 泄漏）
+	done := make(chan struct{})
 	go func() {
+		defer cancel() // 确保 cancel 总是被调用
+
+		var wg sync.WaitGroup
+		for _, layer := range c.layers {
+			wg.Add(1)
+			// 使用 goroutine 异步回填，避免阻塞主流程
+			go func(l LayerConfig) {
+				defer wg.Done()
+				// 创建一个临时变量接收数据（避免并发问题）
+				var temp any
+				err := l.Layer.GetOrLoad(backfillCtx, key, l.TTL, &temp, func(ctx context.Context) (any, error) {
+					return value, nil
+				})
+				if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+					c.onError(ctx, l.Name, "backfill", key, err)
+				}
+			}(layer)
+		}
+
 		wg.Wait()
-		cancel()
+		close(done)
+	}()
+
+	// 监听原始 context 取消，确保及时清理
+	go func() {
+		select {
+		case <-done:
+			// 正常完成
+		case <-ctx.Done():
+			// 原始 context 被取消，cancel 会在 defer 中调用
+		}
 	}()
 }
 
 // backfillRange 回填到指定范围的层
 func (c *Cache) backfillRange(ctx context.Context, key string, value any, start, end int) {
-	var wg sync.WaitGroup
 	// 继承原始 ctx 的取消信号
 	backfillCtx, cancel := context.WithTimeout(ctx, backfillTimeout)
 
-	for i := start; i < end; i++ {
-		layer := c.layers[i]
-		wg.Add(1)
-		go func(l LayerConfig) {
-			defer wg.Done()
-			var temp any
-			err := l.Layer.GetOrLoad(backfillCtx, key, l.TTL, &temp, func(ctx context.Context) (any, error) {
-				return value, nil
-			})
-			if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-				c.onError(ctx, l.Name, "backfill", key, err)
-			}
-		}(layer)
-	}
-
+	// 启动等待 goroutine，确保 cancel 一定会被调用
+	done := make(chan struct{})
 	go func() {
+		defer cancel() // 确保 cancel 总是被调用
+
+		var wg sync.WaitGroup
+		for i := start; i < end; i++ {
+			layer := c.layers[i]
+			wg.Add(1)
+			go func(l LayerConfig) {
+				defer wg.Done()
+				var temp any
+				err := l.Layer.GetOrLoad(backfillCtx, key, l.TTL, &temp, func(ctx context.Context) (any, error) {
+					return value, nil
+				})
+				if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+					c.onError(ctx, l.Name, "backfill", key, err)
+				}
+			}(layer)
+		}
+
 		wg.Wait()
-		cancel()
+		close(done)
+	}()
+
+	// 监听原始 context 取消
+	go func() {
+		select {
+		case <-done:
+		case <-ctx.Done():
+		}
 	}()
 }
 

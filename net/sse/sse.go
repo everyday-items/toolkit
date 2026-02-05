@@ -326,8 +326,17 @@ func (e *HTTPError) Error() string {
 
 // readLoop 事件读取循环
 func (s *Stream) readLoop() {
-	defer close(s.events)
-	defer close(s.errors)
+	defer func() {
+		// 保护 panic，确保资源被正确释放
+		if r := recover(); r != nil {
+			select {
+			case s.errors <- errors.New("sse: internal error in readLoop"):
+			default:
+			}
+		}
+		close(s.events)
+		close(s.errors)
+	}()
 
 	for {
 		select {
@@ -355,7 +364,13 @@ func (s *Stream) readLoop() {
 					// 这是一个权衡：防止 goroutine 泄漏比丢失事件更重要
 					select {
 					case <-s.events: // 丢弃一个旧事件
-						s.events <- event // 写入新事件
+						select {
+						case s.events <- event: // 写入新事件
+						case <-s.done:
+							return
+						default:
+							// 如果还是失败，跳过这个事件
+						}
 					case <-s.done:
 						return
 					default:

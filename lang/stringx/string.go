@@ -15,7 +15,8 @@ var emptyBytes = []byte{}
 //   - 此函数使用 unsafe 操作，仅用于性能关键路径
 //   - 如果不确定是否安全，请使用标准的 string(b) 转换
 func BytesToString(b []byte) string {
-	if len(b) == 0 {
+	// 检查 nil 和空切片，避免访问 &b[0] 导致 panic
+	if b == nil || len(b) == 0 {
 		return ""
 	}
 	return unsafe.String(&b[0], len(b))

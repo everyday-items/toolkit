@@ -3,9 +3,10 @@ package asynq
 import (
 	"context"
 	"fmt"
-	hibasynq "github.com/hibiken/asynq"
 	"sync"
 	"time"
+
+	hibasynq "github.com/hibiken/asynq"
 )
 
 // =========================================
@@ -84,7 +85,7 @@ type BackpressureController struct {
 	manager      *Manager
 	states       map[string]*QueueBackpressure
 	rejectCounts map[string]int64
-	stopCh       chan struct{}
+	cancel       context.CancelFunc // 使用 context 取消替代 channel
 	running      bool
 }
 
@@ -100,7 +101,6 @@ func GetBackpressureController() *BackpressureController {
 			config:       DefaultBackpressureConfig(),
 			states:       make(map[string]*QueueBackpressure),
 			rejectCounts: make(map[string]int64),
-			stopCh:       make(chan struct{}),
 		}
 	})
 	return backpressureController
@@ -128,8 +128,10 @@ func (bc *BackpressureController) Start() {
 		return
 	}
 	bc.running = true
+	ctx, cancel := context.WithCancel(context.Background())
+	bc.cancel = cancel
 	bc.mu.Unlock()
-	go bc.monitorLoop()
+	go bc.monitorLoop(ctx)
 	GetLogger().Log("[Backpressure] Controller started")
 }
 
@@ -140,20 +142,21 @@ func (bc *BackpressureController) Stop() {
 	if !bc.running {
 		return
 	}
-	close(bc.stopCh)
+	if bc.cancel != nil {
+		bc.cancel()
+		bc.cancel = nil
+	}
 	bc.running = false
-	// 重新初始化 stopCh 以便后续可以重新 Start
-	bc.stopCh = make(chan struct{})
 	GetLogger().Log("[Backpressure] Controller stopped")
 }
 
 // monitorLoop 监控循环
-func (bc *BackpressureController) monitorLoop() {
+func (bc *BackpressureController) monitorLoop(ctx context.Context) {
 	ticker := time.NewTicker(bc.config.CheckInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-bc.stopCh:
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			bc.checkAllQueues()

@@ -393,21 +393,36 @@ func (hp *HostPool) GetAllStats() map[string]PoolStatsSnapshot {
 // ============== 全局连接池 ==============
 
 var (
-	globalPool     *Pool
+	globalPool     atomic.Pointer[Pool]
 	globalPoolOnce sync.Once
+	globalPoolMu   sync.Mutex
 )
 
 // GlobalPool 获取全局连接池
 func GlobalPool() *Pool {
+	// 快速路径：已经设置了 pool
+	if p := globalPool.Load(); p != nil {
+		return p
+	}
+
+	// 慢路径：使用 Once 初始化默认 pool
 	globalPoolOnce.Do(func() {
-		globalPool = NewPool()
+		// 再次检查，避免与 SetGlobalPool 竞争
+		if globalPool.Load() == nil {
+			globalPool.Store(NewPool())
+		}
 	})
-	return globalPool
+	return globalPool.Load()
 }
 
 // SetGlobalPool 设置全局连接池
+//
+// 注意：应在程序启动时调用，不建议在运行时频繁更换
+// 旧的连接池不会被自动关闭，调用者负责管理其生命周期
 func SetGlobalPool(pool *Pool) {
-	globalPool = pool
+	globalPoolMu.Lock()
+	defer globalPoolMu.Unlock()
+	globalPool.Store(pool)
 }
 
 // ============== 重试中间件 ==============

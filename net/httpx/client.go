@@ -388,12 +388,11 @@ func (c *Client) checkSSRF(rawURL string) error {
 	}
 
 	host := u.Hostname()
+	port := u.Port()
 
-	// 检查是否在白名单中
-	for _, allowed := range c.allowedHosts {
-		if host == allowed {
-			return nil
-		}
+	// 检查是否在白名单中（支持通配符和端口）
+	if c.isHostAllowed(host, port) {
+		return nil
 	}
 
 	// 检查是否为私有/内网 IP
@@ -402,6 +401,54 @@ func (c *Client) checkSSRF(rawURL string) error {
 	}
 
 	return nil
+}
+
+// isHostAllowed 检查主机是否在白名单中
+func (c *Client) isHostAllowed(host, port string) bool {
+	return isHostInAllowedList(host, port, c.allowedHosts)
+}
+
+// isHostInAllowedList 检查主机是否在允许列表中
+// 支持以下格式:
+//   - "example.com" - 精确匹配主机名（任意端口）
+//   - "example.com:8080" - 精确匹配主机名和端口
+//   - "*.example.com" - 通配符匹配子域名
+//   - "*.example.com:443" - 通配符匹配子域名和指定端口
+func isHostInAllowedList(host, port string, allowedHosts []string) bool {
+	// 规范化主机名（大小写不敏感）
+	lowerHost := strings.ToLower(host)
+
+	for _, allowed := range allowedHosts {
+		allowed = strings.ToLower(allowed)
+
+		// 分离白名单中的主机和端口
+		allowedHost, allowedPort := allowed, ""
+		if idx := strings.LastIndex(allowed, ":"); idx != -1 {
+			// 检查是否是端口（不是 IPv6 地址）
+			if !strings.Contains(allowed[idx:], "]") {
+				allowedHost = allowed[:idx]
+				allowedPort = allowed[idx+1:]
+			}
+		}
+
+		// 如果白名单指定了端口，必须匹配
+		if allowedPort != "" && allowedPort != port {
+			continue
+		}
+
+		// 检查通配符匹配
+		if strings.HasPrefix(allowedHost, "*.") {
+			// 通配符模式：*.example.com 匹配 foo.example.com, bar.example.com
+			suffix := allowedHost[1:] // ".example.com"
+			if strings.HasSuffix(lowerHost, suffix) && lowerHost != suffix[1:] {
+				return true
+			}
+		} else if allowedHost == lowerHost {
+			// 精确匹配
+			return true
+		}
+	}
+	return false
 }
 
 // isPrivateOrInternalHost 检查主机是否为私有或内部地址
@@ -424,7 +471,17 @@ func isPrivateOrInternalHost(host string) bool {
 		resolver := &net.Resolver{}
 		ips, err := resolver.LookupIP(ctx, "ip", host)
 		if err != nil || len(ips) == 0 {
-			return false // 无法解析，允许请求（由网络层处理）
+			// DNS 解析失败时，出于安全考虑应阻止请求
+			// 防止攻击者利用 DNS 解析失败绕过 SSRF 防护
+			// 如果确实需要访问该域名，应将其加入白名单
+			return true
+		}
+		// 检查所有解析到的 IP 地址
+		for _, resolvedIP := range ips {
+			if resolvedIP.IsLoopback() || resolvedIP.IsPrivate() || resolvedIP.IsLinkLocalUnicast() ||
+				resolvedIP.IsLinkLocalMulticast() || isCloudMetadataIP(resolvedIP) {
+				return true
+			}
 		}
 		ip = ips[0]
 	}
@@ -463,20 +520,18 @@ func (t *ssrfSafeTransport) RoundTrip(req *http.Request) (*http.Response, error)
 
 	// 设置自定义 DialContext，在连接时检查 IP
 	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, _, err := net.SplitHostPort(addr)
+		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, err
 		}
 
-		// 检查是否在白名单中
-		for _, allowed := range t.allowedHosts {
-			if host == allowed {
-				// 白名单主机，使用默认 Dialer
-				return (&net.Dialer{
-					Timeout:   30 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext(ctx, network, addr)
-			}
+		// 检查是否在白名单中（支持通配符和端口）
+		if isHostInAllowedList(host, port, t.allowedHosts) {
+			// 白名单主机，使用默认 Dialer
+			return (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext(ctx, network, addr)
 		}
 
 		// 使用带超时的 context 进行 DNS 查询

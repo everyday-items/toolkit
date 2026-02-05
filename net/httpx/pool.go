@@ -393,9 +393,8 @@ func (hp *HostPool) GetAllStats() map[string]PoolStatsSnapshot {
 // ============== 全局连接池 ==============
 
 var (
-	globalPool     atomic.Pointer[Pool]
-	globalPoolOnce sync.Once
-	globalPoolMu   sync.Mutex
+	globalPool   atomic.Pointer[Pool]
+	globalPoolMu sync.Mutex
 )
 
 // GlobalPool 获取全局连接池
@@ -405,14 +404,18 @@ func GlobalPool() *Pool {
 		return p
 	}
 
-	// 慢路径：使用 Once 初始化默认 pool
-	globalPoolOnce.Do(func() {
-		// 再次检查，避免与 SetGlobalPool 竞争
-		if globalPool.Load() == nil {
-			globalPool.Store(NewPool())
-		}
-	})
-	return globalPool.Load()
+	// 慢路径：使用互斥锁初始化默认 pool
+	globalPoolMu.Lock()
+	defer globalPoolMu.Unlock()
+
+	// 双重检查
+	if p := globalPool.Load(); p != nil {
+		return p
+	}
+
+	p := NewPool()
+	globalPool.Store(p)
+	return p
 }
 
 // SetGlobalPool 设置全局连接池

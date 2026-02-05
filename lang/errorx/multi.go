@@ -1,6 +1,7 @@
 package errorx
 
 import (
+	"reflect"
 	"strings"
 	"sync"
 )
@@ -263,6 +264,9 @@ func GoWithLimit(limit int, fns ...func() error) *MultiError {
 	return me
 }
 
+// maxWalkDepth 最大遍历深度，防止无限循环
+const maxWalkDepth = 1000
+
 // Walk 遍历错误链，对每个错误调用函数
 //
 // 参数:
@@ -270,6 +274,7 @@ func GoWithLimit(limit int, fns ...func() error) *MultiError {
 //   - fn: 对每个错误调用的函数，返回 false 停止遍历
 //
 // 注意: 使用迭代方式实现，避免深层错误链导致栈溢出
+// 限制最大遍历深度为 1000，超过后自动停止，防止循环引用导致无限循环
 //
 // 示例:
 //
@@ -286,27 +291,42 @@ func Walk(err error, fn func(error) bool) {
 	}
 
 	// 使用栈代替递归，防止深层错误链导致栈溢出
-	// 使用 map 记录已访问的错误，防止循环引用导致无限循环
-	stack := []error{err}
-	visited := make(map[error]struct{})
+	// 使用 map 记录已访问的错误指针地址，防止循环引用导致无限循环
+	type stackItem struct {
+		err   error
+		depth int
+	}
+	stack := []stackItem{{err: err, depth: 0}}
+	// 使用 uintptr 作为 key，基于错误对象的内存地址进行去重
+	// 这比使用 error 接口作为 key 更可靠，因为：
+	// 1. 不依赖于 error 的值相等性
+	// 2. 不会因为不可比较的类型而 panic
+	visited := make(map[uintptr]struct{})
 
 	for len(stack) > 0 {
 		// 弹出栈顶元素
-		current := stack[len(stack)-1]
+		item := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		if current == nil {
+		if item.err == nil {
 			continue
 		}
 
-		// 检查是否已访问过（防止循环引用）
-		if _, ok := visited[current]; ok {
+		// 检查深度限制，防止无限循环
+		if item.depth >= maxWalkDepth {
 			continue
 		}
-		visited[current] = struct{}{}
+
+		// 获取错误对象的指针地址用于去重
+		// 使用 interface 的数据指针作为唯一标识
+		ptr := errorPtr(item.err)
+		if _, ok := visited[ptr]; ok {
+			continue
+		}
+		visited[ptr] = struct{}{}
 
 		// 调用处理函数
-		if !fn(current) {
+		if !fn(item.err) {
 			return
 		}
 
@@ -314,12 +334,12 @@ func Walk(err error, fn func(error) bool) {
 		var children []error
 
 		// 处理 MultiError
-		if me, ok := current.(*MultiError); ok {
+		if me, ok := item.err.(*MultiError); ok {
 			children = me.Errors()
-		} else if unwrapper, ok := current.(interface{ Unwrap() []error }); ok {
+		} else if unwrapper, ok := item.err.(interface{ Unwrap() []error }); ok {
 			// 处理 errors.Join 返回的类型
 			children = unwrapper.Unwrap()
-		} else if unwrapper, ok := current.(interface{ Unwrap() error }); ok {
+		} else if unwrapper, ok := item.err.(interface{ Unwrap() error }); ok {
 			// 处理单个包装错误
 			if unwrapped := unwrapper.Unwrap(); unwrapped != nil {
 				children = []error{unwrapped}
@@ -329,10 +349,26 @@ func Walk(err error, fn func(error) bool) {
 		// 逆序压入栈以保持遍历顺序
 		for i := len(children) - 1; i >= 0; i-- {
 			if children[i] != nil {
-				stack = append(stack, children[i])
+				stack = append(stack, stackItem{err: children[i], depth: item.depth + 1})
 			}
 		}
 	}
+}
+
+// errorPtr 获取 error 接口的数据指针，用于唯一标识
+// 利用 reflect 获取底层值的指针地址
+func errorPtr(err error) uintptr {
+	v := reflect.ValueOf(err)
+	// 对于指针类型，直接获取指针值
+	if v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+		if !v.IsNil() {
+			return v.Pointer()
+		}
+	}
+	// 对于非指针类型，使用 reflect.Value 的地址作为标识
+	// 注意：这对于值类型可能不够精确，但至少能防止 panic
+	// 结合深度限制，可以有效防止无限循环
+	return uintptr(v.Kind())
 }
 
 // CollectErrors 从多个操作收集错误

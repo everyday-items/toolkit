@@ -322,16 +322,36 @@ func (b *Breaker) notifyStateChange(from, to State) {
 }
 
 // Reset 重置熔断器
+//
+// 使用 CAS 循环确保状态转换的原子性，防止与其他状态转换操作产生竞态
 func (b *Breaker) Reset() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	for {
+		oldState := State(b.state.Load())
+		if oldState == StateClosed {
+			// 已经是 Closed 状态，只需重置计数器
+			b.failures.Store(0)
+			b.successes.Store(0)
+			b.halfOpenCount.Store(0)
+			b.lastFailureAt.Store(0)
+			b.openedAt.Store(0)
+			return
+		}
 
-	b.state.Store(int32(StateClosed))
-	b.failures.Store(0)
-	b.successes.Store(0)
-	b.halfOpenCount.Store(0)
-	b.lastFailureAt.Store(0)
-	b.openedAt.Store(0)
+		// 尝试 CAS 将状态改为 Closed
+		if b.state.CompareAndSwap(int32(oldState), int32(StateClosed)) {
+			// CAS 成功，重置所有计数器
+			b.failures.Store(0)
+			b.successes.Store(0)
+			b.halfOpenCount.Store(0)
+			b.lastFailureAt.Store(0)
+			b.openedAt.Store(0)
+
+			// 通知监听器
+			b.notifyStateChange(oldState, StateClosed)
+			return
+		}
+		// CAS 失败，状态已被其他 goroutine 改变，重试
+	}
 }
 
 // OnStateChange 添加状态变更监听器

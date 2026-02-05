@@ -2,14 +2,16 @@ package syncx
 
 import (
 	"sync"
+	"sync/atomic"
 )
 
 // Once 泛型版的 sync.Once，可以返回值
 //
 // 与 sync.Once 不同，Once[T] 可以返回初始化的值
 type Once[T any] struct {
-	once  sync.Once
-	value T
+	once        sync.Once
+	value       T
+	initialized atomic.Bool // 用于追踪是否已初始化
 }
 
 // Do 执行初始化函数（只执行一次）
@@ -29,6 +31,7 @@ type Once[T any] struct {
 func (o *Once[T]) Do(fn func() T) T {
 	o.once.Do(func() {
 		o.value = fn()
+		o.initialized.Store(true)
 	})
 	return o.value
 }
@@ -116,9 +119,10 @@ func OnceFunc(fn func()) func() {
 
 // OnceErr 泛型版的 sync.Once，可以返回值和错误
 type OnceErr[T any] struct {
-	once  sync.Once
-	value T
-	err   error
+	once        sync.Once
+	value       T
+	err         error
+	initialized atomic.Bool // 用于追踪是否已初始化
 }
 
 // Do 执行初始化函数（只执行一次）
@@ -139,6 +143,7 @@ type OnceErr[T any] struct {
 func (o *OnceErr[T]) Do(fn func() (T, error)) (T, error) {
 	o.once.Do(func() {
 		o.value, o.err = fn()
+		o.initialized.Store(true)
 	})
 	return o.value, o.err
 }
@@ -157,12 +162,7 @@ func (o *OnceErr[T]) Value() (T, error) {
 // 返回:
 //   - bool: 如果已初始化返回 true
 //
-// 注意: 这不是原子操作，仅供参考
+// 注意: 此方法是线程安全的，不会触发初始化
 func (o *OnceErr[T]) IsInitialized() bool {
-	// 尝试执行空操作来检查状态
-	initialized := true
-	o.once.Do(func() {
-		initialized = false
-	})
-	return initialized
+	return o.initialized.Load()
 }

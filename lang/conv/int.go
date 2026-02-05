@@ -65,8 +65,24 @@ func Int64(any any) int64 {
 		}
 		return int64(value)
 	case float32:
+		// 检查 NaN 和 Inf
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return 0
+		}
+		// 检查溢出
+		if value > math.MaxInt64 || value < math.MinInt64 {
+			return 0
+		}
 		return int64(value)
 	case float64:
+		// 检查 NaN 和 Inf
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return 0
+		}
+		// 检查溢出
+		if value > math.MaxInt64 || value < math.MinInt64 {
+			return 0
+		}
 		return int64(value)
 	case bool:
 		if value {
@@ -127,8 +143,24 @@ func TryInt64(any any) (int64, bool) {
 		}
 		return int64(value), true
 	case float32:
+		// 检查 NaN 和 Inf
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return 0, false
+		}
+		// 检查溢出
+		if value > math.MaxInt64 || value < math.MinInt64 {
+			return 0, false
+		}
 		return int64(value), true
 	case float64:
+		// 检查 NaN 和 Inf
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return 0, false
+		}
+		// 检查溢出
+		if value > math.MaxInt64 || value < math.MinInt64 {
+			return 0, false
+		}
 		return int64(value), true
 	case bool:
 		if value {

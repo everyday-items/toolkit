@@ -691,3 +691,72 @@ func TestClone(t *testing.T) {
 		t.Error("Clone should be shallow copy")
 	}
 }
+
+// TestDeepCopy_CircularReference 测试循环引用处理
+func TestDeepCopy_CircularReference(t *testing.T) {
+	// 定义一个可以自引用的结构体
+	type Node struct {
+		Value int
+		Next  *Node
+	}
+
+	// 创建一个循环引用链
+	node1 := &Node{Value: 1}
+	node2 := &Node{Value: 2}
+	node3 := &Node{Value: 3}
+	node1.Next = node2
+	node2.Next = node3
+	node3.Next = node1 // 循环引用
+
+	// 执行深拷贝（不应该导致栈溢出）
+	copied := DeepCopy(node1)
+
+	// 验证拷贝成功
+	if copied == nil {
+		t.Fatal("DeepCopy returned nil")
+	}
+	if copied.Value != 1 {
+		t.Errorf("expected Value=1, got %d", copied.Value)
+	}
+	if copied.Next == nil || copied.Next.Value != 2 {
+		t.Error("Next node not copied correctly")
+	}
+	if copied.Next.Next == nil || copied.Next.Next.Value != 3 {
+		t.Error("Next.Next node not copied correctly")
+	}
+
+	// 验证是独立副本（修改原始不影响拷贝）
+	node1.Value = 100
+	if copied.Value == 100 {
+		t.Error("modifying original should not affect copy")
+	}
+}
+
+// TestDeepCopy_SelfReference 测试自引用结构体
+func TestDeepCopy_SelfReference(t *testing.T) {
+	type Self struct {
+		Value int
+		Self  *Self
+	}
+
+	// 创建自引用结构
+	s := &Self{Value: 42}
+	s.Self = s // 自引用
+
+	// 执行深拷贝（不应该导致栈溢出）
+	copied := DeepCopy(s)
+
+	// 验证拷贝成功
+	if copied == nil {
+		t.Fatal("DeepCopy returned nil")
+	}
+	if copied.Value != 42 {
+		t.Errorf("expected Value=42, got %d", copied.Value)
+	}
+
+	// 验证是独立副本
+	s.Value = 100
+	if copied.Value == 100 {
+		t.Error("modifying original should not affect copy")
+	}
+}

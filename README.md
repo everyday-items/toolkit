@@ -12,9 +12,11 @@
 ✅ **零拷贝优化** - 高性能字符串/字节操作
 ✅ **完整监控** - Prometheus 指标支持
 ✅ **泛型支持** - Go 1.22+ 泛型实现类型安全
-✅ **安全优先** - SSRF 防护、HMAC 恒定时间比较、AES-GCM 推荐
-✅ **AI 生态** - OpenAI/Claude/Gemini 流式响应处理
-✅ **多层缓存** - Local → Redis → DB 三层防护
+✅ **安全优先** - SSRF 防护（IPv6）、HMAC 恒定时间比较、AES-GCM 推荐
+✅ **AI 生态** - OpenAI/Claude/Gemini 等 14+ 平台预设客户端与流式响应处理
+✅ **多层缓存** - Local → Redis → DB 三层防护（防击穿/穿透/雪崩）
+✅ **HTTP 连接池** - 连接复用、重试重放、限流、断路器中间件
+✅ **熔断保护** - AI API 专用熔断器预设，多实例管理
 
 ## 快速开始
 
@@ -283,22 +285,44 @@ result, err := sf.Do("user:123", func() (any, error) {
     return db.GetUser(123)  // 多个并发请求只执行一次
 })
 
-// Semaphore - 信号量
+// Semaphore - 信号量（支持 context 超时）
 sem := syncx.NewSemaphore(10)  // 最多10个并发
 sem.Acquire()
 defer sem.Release()
+sem.TryAcquire()                        // 非阻塞尝试
+sem.AcquireContext(ctx)                  // 支持超时取消
+
+// Once - 泛型版 sync.Once（可返回值）
+var once syncx.Once[*Config]
+cfg := once.Do(func() *Config { return loadConfig() })
+val, ok := once.Value()                  // 查询是否已初始化
+
+// OnceErr - 支持错误的 Once
+var onceErr syncx.OnceErr[*DB]
+db, err := onceErr.Do(func() (*DB, error) { return connectDB() })
+
+// OnceValue / OnceFunc - 函数式包装
+getConfig := syncx.OnceValue(func() *Config { return loadConfig() })
+cfg1 := getConfig()                      // 首次执行
+cfg2 := getConfig()                      // 返回缓存值
+
+initOnce := syncx.OnceFunc(func() { initialize() })
+initOnce()                               // 执行
+initOnce()                               // 不再执行
 
 // Lazy - 延迟初始化
 config := syncx.NewLazy(func() *Config {
     return loadConfigFromFile()
 })
-cfg := config.Get()  // 首次调用时初始化
+cfg := config.Get()                      // 首次调用时初始化
+config.IsInitialized()                   // 查询状态
 
-// Once - 泛型版 sync.Once
-once := syncx.NewOnce(func() *DB {
+// LazyErr - 支持错误的延迟初始化
+db := syncx.NewLazyErr(func() (*DB, error) {
     return connectDB()
 })
-db := once.Do()
+conn, err := db.Get()                    // 首次调用时初始化
+conn = db.MustGet()                      // panic on error
 ```
 
 ### 切片增强
@@ -442,14 +466,111 @@ resp, _ := client.R().
 var users []User
 resp.JSON(&users)
 
-// SSRF 防护（阻止访问内网地址）
+// SSRF 防护（阻止访问内网地址，支持 IPv6 白名单）
 client := httpx.NewClient(
-    httpx.WithSSRFProtection("api.trusted.com"),  // 可选白名单
+    httpx.WithSSRFProtection("api.trusted.com", "[::1]:8080"),
 )
 resp, err := client.R().Get(userProvidedURL)
 if errors.Is(err, httpx.ErrSSRFBlocked) {
     // 请求被拦截
 }
+```
+
+### HTTP 连接池
+
+```go
+import "github.com/everyday-items/toolkit/net/httpx"
+
+// 创建连接池
+pool := httpx.NewPool(httpx.PoolConfig{
+    MaxIdleConns:    100,
+    MaxConnsPerHost: 10,
+    IdleConnTimeout: 90 * time.Second,
+})
+defer pool.Close()
+
+// 执行请求
+req, _ := http.NewRequest("GET", "https://api.example.com", nil)
+resp, _ := pool.Do(req)
+
+// 查看统计信息
+stats := pool.GetStats()
+fmt.Printf("总请求: %d, 活跃: %d, 错误: %d\n",
+    stats.TotalRequests, stats.ActiveRequests, stats.ErrorCount)
+
+// 全局连接池
+httpx.SetGlobalPool(pool)
+p := httpx.GlobalPool()
+
+// 主机级连接池（自动按主机分配独立连接池）
+hostPool := httpx.NewHostPool()
+defer hostPool.Close()
+hostPool.SetHostConfig("api.example.com", httpx.PoolConfig{MaxConnsPerHost: 20})
+resp, _ = hostPool.Do(req)
+
+// 带重试的连接池（自动缓存 Body 支持重放）
+retryPool := httpx.NewRetryPool(pool, httpx.RetryConfig{
+    MaxRetries:   3,
+    RetryWait:    100 * time.Millisecond,
+    MaxRetryWait: 5 * time.Second,
+    RetryCondition: func(resp *http.Response, err error) bool {
+        return err != nil || resp.StatusCode >= 500
+    },
+})
+
+// 带限流的连接池
+rateLimitedPool := httpx.NewRateLimitedPool(pool, 100)  // 100 QPS
+defer rateLimitedPool.Close()
+
+// 带断路器的连接池
+cbPool := httpx.NewCircuitBreakerPool(pool, httpx.CircuitBreakerConfig{
+    FailureThreshold: 5,
+    SuccessThreshold: 2,
+    Timeout:          30 * time.Second,
+})
+```
+
+### AI 客户端预设
+
+```go
+import "github.com/everyday-items/toolkit/net/httpx"
+
+// 各大 AI 平台预设客户端（自动配置 BaseURL、认证头、超时等）
+openai := httpx.OpenAIClient("sk-xxx")
+claude := httpx.ClaudeClient("sk-ant-xxx")
+gemini := httpx.GeminiClient("AIza-xxx")
+deepseek := httpx.DeepSeekClient("sk-xxx")
+qwen := httpx.QwenClient("sk-xxx")           // 通义千问
+zhipu := httpx.ZhipuClient("xxx.xxx")        // 智谱清言
+moonshot := httpx.MoonshotClient("sk-xxx")    // 月之暗面
+doubao := httpx.DoubaoClient("xxx")           // 字节豆包
+
+// 自定义 AI 客户端
+custom := httpx.CustomAIClient("https://my-api.com", "my-token")
+
+// 流式请求
+stream, _ := claude.R().
+    SetJSONBody(requestBody).
+    PostStream("/v1/messages")
+defer stream.Close()
+
+// 读取 SSE 事件
+for {
+    event, err := stream.ReadSSE()
+    if err != nil { break }
+    fmt.Println(event.Data)
+}
+
+// 读取 OpenAI 格式流式 JSON
+var chunk httpx.OpenAIStreamChunk
+for {
+    err := stream.ReadJSON(&chunk)
+    if err != nil { break }
+    fmt.Print(chunk.Choices[0].Delta.Content)
+}
+
+// 一行收集所有内容
+content, _ := stream.CollectOpenAIContent()
 ```
 
 ### SSE 服务端推送
@@ -491,6 +612,55 @@ func handler(w http.ResponseWriter, r *http.Request) {
 sse.ReadOpenAIStream(resp.Body, func(chunk ChatCompletion) error {
     fmt.Print(chunk.Choices[0].Delta.Content)
     return nil
+})
+```
+
+### 熔断器
+
+```go
+import "github.com/everyday-items/toolkit/util/circuit"
+
+// 基本使用
+breaker := circuit.New(
+    circuit.WithThreshold(5),           // 5次失败后熔断
+    circuit.WithTimeout(30*time.Second), // 熔断持续30秒
+    circuit.WithHalfOpenMaxRequests(3), // 半开状态最多3个探测请求
+    circuit.WithSuccessThreshold(2),    // 2次成功后恢复
+)
+
+result, err := breaker.Execute(func() (any, error) {
+    return callAPI()
+})
+
+// AI API 专用熔断器（内置预设配置）
+openaiBreaker := circuit.NewAIBreaker(circuit.OpenAIConfig)
+claudeBreaker := circuit.NewAIBreaker(circuit.ClaudeConfig)
+geminiBreaker := circuit.NewAIBreaker(circuit.GeminiConfig)
+
+// 预设风格
+aggressiveBreaker := circuit.NewAIBreaker(circuit.AggressiveConfig)       // 快速熔断
+conservativeBreaker := circuit.NewAIBreaker(circuit.ConservativeConfig)   // 慢速熔断
+
+// 自定义错误判断
+breaker = circuit.New(
+    circuit.WithIsFailure(circuit.IsRateLimitOrServerError),  // 仅 429/5xx 触发
+)
+
+// 多熔断器管理（按名称隔离）
+manager := circuit.NewBreakerManager(func() *circuit.Breaker {
+    return circuit.NewAIBreaker(circuit.OpenAIConfig)
+})
+result, err = manager.Execute("gpt-4", func() (any, error) {
+    return callGPT4()
+})
+manager.Execute("claude", func() (any, error) {
+    return callClaude()
+})
+states := manager.States()  // map[string]State
+
+// 状态监听
+breaker.OnStateChange(func(from, to circuit.State) {
+    log.Printf("熔断器状态: %s -> %s", from, to)
 })
 ```
 
@@ -570,7 +740,8 @@ import "github.com/everyday-items/toolkit/util/reflectx"
 
 // Struct ↔ Map 转换
 user := User{Name: "Alice", Age: 20}
-m := reflectx.StructToMap(user)  // map[string]any{"Name": "Alice", "Age": 20}
+m := reflectx.StructToMap(user)                    // map[string]any{"Name": "Alice", "Age": 20}
+m = reflectx.StructToMapWithTag(user, "json")      // 使用 json tag 作为 key
 
 var user2 User
 reflectx.MapToStruct(m, &user2)
@@ -578,14 +749,20 @@ reflectx.MapToStruct(m, &user2)
 // 字段操作
 name, _ := reflectx.GetField(user, "Name")
 reflectx.SetField(&user, "Name", "Bob")
+reflectx.HasField(user, "Name")                    // true
+names := reflectx.FieldNames(user)                 // ["Name", "Age"]
 
-// 深拷贝
-copied := reflectx.DeepCopy(original)
+// 深拷贝（支持循环引用检测，nil 安全）
+copied := reflectx.DeepCopy(original)              // 递归深拷贝
+shallow := reflectx.Clone(original)                // 浅拷贝
 
-// 工具函数
+// 类型检查
 reflectx.IsZero(value)
 reflectx.IsNil(value)
-reflectx.TypeName(value)  // "User"
+reflectx.TypeName(value)                           // "User"
+reflectx.IsPtr(value)
+reflectx.IsStruct(value)
+reflectx.IsSlice(value)
 ```
 
 ### 结构体验证
@@ -887,17 +1064,17 @@ toolkit/
 │   ├── slicex/        # 切片工具（泛型）
 │   ├── stream/        # Stream API
 │   ├── stringx/       # 字符串扩展
-│   ├── syncx/         # 并发工具（ConcurrentMap/Semaphore/Lazy）
+│   ├── syncx/         # 并发工具（ConcurrentMap/Semaphore/Once/Lazy/Pool）
 │   ├── timex/         # 时间工具
 │   └── tuple/         # 元组类型（Tuple2/3/4）
 │
 ├── net/                # 网络工具
-│   ├── httpx/         # HTTP 客户端（SSRF 防护）
+│   ├── httpx/         # HTTP 客户端（SSRF 防护/连接池/重试/限流/AI 预设）
 │   ├── ip/            # IP 工具
 │   └── sse/           # Server-Sent Events
 │
 ├── util/               # 工具组件
-│   ├── circuit/       # 熔断器
+│   ├── circuit/       # 熔断器（AI 预设/多实例管理）
 │   ├── config/        # 配置管理
 │   ├── encoding/      # 编码（Base64/Hex/URL）
 │   ├── env/           # 环境变量
@@ -910,7 +1087,7 @@ toolkit/
 │   ├── poolx/         # 高性能协程池
 │   ├── rand/          # 随机数
 │   ├── rate/          # 限流器
-│   ├── reflectx/      # 反射工具
+│   ├── reflectx/      # 反射工具（DeepCopy/Clone/StructToMap）
 │   ├── retry/         # 重试机制
 │   ├── slice/         # 切片工具
 │   └── validator/     # 数据验证（含结构体标签）
@@ -922,45 +1099,56 @@ toolkit/
 
 | 包 | 覆盖率 |
 |---|--------|
-| collection/list | 98.8% |
-| collection/queue | 100.0% |
-| collection/set | 95.5% |
+| collection/list | 80.4% |
+| collection/queue | 90.4% |
+| collection/set | 74.3% |
 | collection/stack | 100.0% |
-| lang/contextx | 97.2% |
-| lang/conv | 100.0% |
+| lang/cond | 94.5% |
+| lang/contextx | 92.4% |
+| lang/conv | 74.4% |
+| lang/errorx | 87.9% |
+| lang/mapx | 96.3% |
+| lang/mathx | 93.5% |
+| lang/optional | 100.0% |
+| lang/slicex | 78.4% |
+| lang/stream | 94.3% |
 | lang/stringx | 95.9% |
-| lang/timex | 96.0% |
-| lang/slicex | 100.0% |
-| lang/mapx | 96.5% |
-| lang/mathx | 100.0% |
-| lang/errorx | 80.8% |
-| lang/syncx | 100.0% |
-| crypto/aes | 83.2% |
+| lang/syncx | 85.5% |
+| lang/timex | 91.2% |
+| lang/tuple | 93.8% |
+| crypto/aes | 82.8% |
 | crypto/rsa | 81.4% |
-| crypto/sign | 95.9% |
-| net/httpx | 90.1% |
-| net/ip | 87.5% |
-| cache/local | 91.2% |
-| cache/multi | 72.8% |
+| crypto/sign | 82.3% |
+| net/httpx | 50.0% |
+| net/ip | 76.0% |
+| net/sse | 82.5% |
+| cache/local | 77.1% |
+| cache/multi | 80.0% |
 | cache/redis | 78.3% |
-| util/config | 77.7% |
+| util/circuit | 87.8% |
+| util/config | 77.8% |
 | util/encoding | 93.7% |
 | util/env | 97.4% |
-| util/file | 84.7% |
+| util/file | 82.7% |
 | util/hash | 100.0% |
-| util/poolx | 61.6% |
-| util/idgen | 84.5% |
-| util/json | 79.6% |
-| util/logger | 93.7% |
-| util/pagination | 94.1% |
-| util/rand | 96.8% |
-| util/rate | 97.9% |
-| util/retry | 91.9% |
+| util/idgen | 74.0% |
+| util/json | 78.8% |
+| util/logger | 91.5% |
+| util/pagination | 92.6% |
+| util/poolx | 72.2% |
+| util/rand | 86.8% |
+| util/rate | 60.9% |
+| util/reflectx | 90.3% |
+| util/retry | 65.0% |
 | util/slice | 100.0% |
-| util/validator | 100.0% |
-| infra/db/mysql | 54.3% |
-| infra/db/redis | 80.2% |
-| infra/queue/asynq | 23.3% |
+| util/validator | 87.6% |
+| infra/db | 76.3% |
+| infra/db/mysql | 48.7% |
+| infra/db/redis | 79.2% |
+| infra/observe | 66.7% |
+| infra/otel | 29.8% |
+| infra/prometheus | 86.2% |
+| infra/queue/asynq | 27.2% |
 
 ## 设计哲学
 

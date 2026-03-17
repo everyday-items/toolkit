@@ -45,6 +45,9 @@ func (m *mockLayer) GetOrLoad(ctx context.Context, key string, ttl time.Duration
 		} else if ptr, ok := dest.(*int); ok {
 			if i, ok := val.(int); ok {
 				*ptr = i
+			} else if f, ok := val.(float64); ok {
+				// JSON 反序列化后整数变为 float64
+				*ptr = int(f)
 			}
 		}
 		return nil
@@ -70,6 +73,9 @@ func (m *mockLayer) GetOrLoad(ctx context.Context, key string, ttl time.Duration
 	} else if ptr, ok := dest.(*int); ok {
 		if i, ok := val.(int); ok {
 			*ptr = i
+		} else if f, ok := val.(float64); ok {
+			// JSON 反序列化后整数变为 float64
+			*ptr = int(f)
 		}
 	}
 

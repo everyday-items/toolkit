@@ -21,13 +21,13 @@
 ## 快速开始
 
 ```bash
-go get github.com/everyday-items/toolkit
+go get github.com/hexagon-codes/toolkit
 ```
 
 ### 类型转换
 
 ```go
-import "github.com/everyday-items/toolkit/lang/conv"
+import "github.com/hexagon-codes/toolkit/lang/conv"
 
 str := conv.String(123)           // "123"
 i := conv.Int("42")               // 42
@@ -41,7 +41,7 @@ json, _ := conv.MapToJson(m)
 ### 字符串工具
 
 ```go
-import "github.com/everyday-items/toolkit/lang/stringx"
+import "github.com/hexagon-codes/toolkit/lang/stringx"
 
 // 零拷贝转换
 str := stringx.BytesToString([]byte("hello"))
@@ -61,7 +61,7 @@ stringx.Reverse("hello")             // "olleh"
 ### Map 操作
 
 ```go
-import "github.com/everyday-items/toolkit/lang/mapx"
+import "github.com/hexagon-codes/toolkit/lang/mapx"
 
 m := map[string]int{"a": 1, "b": 2, "c": 3}
 
@@ -75,7 +75,7 @@ inverted := mapx.Invert(m)                     // map[int]string
 ### 错误处理
 
 ```go
-import "github.com/everyday-items/toolkit/lang/errorx"
+import "github.com/hexagon-codes/toolkit/lang/errorx"
 
 // Must - panic on error
 value := errorx.Must(strconv.Atoi("42"))
@@ -98,7 +98,7 @@ if result.IsOk() {
 ### 时间工具
 
 ```go
-import "github.com/everyday-items/toolkit/lang/timex"
+import "github.com/hexagon-codes/toolkit/lang/timex"
 
 timex.IsToday(t)                    // 是否今天
 timex.IsWeekend(t)                  // 是否周末
@@ -119,7 +119,7 @@ t = timex.InShanghai(time.Now())    // 转换为上海时间
 ### 条件工具
 
 ```go
-import "github.com/everyday-items/toolkit/lang/cond"
+import "github.com/hexagon-codes/toolkit/lang/cond"
 
 // If 三元表达式
 result := cond.If(age >= 18, "成年", "未成年")
@@ -147,7 +147,7 @@ result := cond.Switch[string, string](status).
 ### 元组类型
 
 ```go
-import "github.com/everyday-items/toolkit/lang/tuple"
+import "github.com/hexagon-codes/toolkit/lang/tuple"
 
 // 创建元组
 t2 := tuple.T2("name", 42)
@@ -171,7 +171,7 @@ names, ages = tuple.Unzip2(pairs)
 ### Optional 类型
 
 ```go
-import "github.com/everyday-items/toolkit/lang/optional"
+import "github.com/hexagon-codes/toolkit/lang/optional"
 
 // 创建 Option
 opt := optional.Some(42)
@@ -198,7 +198,7 @@ positive := opt.Filter(func(n int) bool { return n > 0 })
 ### Stream API
 
 ```go
-import "github.com/everyday-items/toolkit/lang/stream"
+import "github.com/hexagon-codes/toolkit/lang/stream"
 
 // 创建 Stream
 s := stream.Of(1, 2, 3, 4, 5)
@@ -234,7 +234,7 @@ groups := stream.GroupBy(users, func(u User) string {
 ### 多错误聚合
 
 ```go
-import "github.com/everyday-items/toolkit/lang/errorx"
+import "github.com/hexagon-codes/toolkit/lang/errorx"
 
 // MultiError 收集多个错误
 me := errorx.NewMultiError()
@@ -270,7 +270,7 @@ errorx.Walk(err, func(e error) bool {
 ### 并发工具
 
 ```go
-import "github.com/everyday-items/toolkit/lang/syncx"
+import "github.com/hexagon-codes/toolkit/lang/syncx"
 
 // ConcurrentMap - 泛型并发安全 Map
 m := syncx.NewConcurrentMap[string, int]()
@@ -328,7 +328,7 @@ conn = db.MustGet()                      // panic on error
 ### 切片增强
 
 ```go
-import "github.com/everyday-items/toolkit/lang/slicex"
+import "github.com/hexagon-codes/toolkit/lang/slicex"
 
 // Partition 分区
 even, odd := slicex.Partition(nums, func(n int) bool {
@@ -356,7 +356,7 @@ slice := slicex.FromChannel(ch)
 ### Context 工具
 
 ```go
-import "github.com/everyday-items/toolkit/lang/contextx"
+import "github.com/hexagon-codes/toolkit/lang/contextx"
 
 // 类型安全的 context key
 userKey := contextx.NewKey[User]("user")
@@ -397,7 +397,7 @@ pool.Wait()
 ### AES 加密
 
 ```go
-import "github.com/everyday-items/toolkit/crypto/aes"
+import "github.com/hexagon-codes/toolkit/crypto/aes"
 
 key, _ := aes.GenerateKey(32)  // AES-256
 
@@ -413,7 +413,7 @@ decrypted, _ := aes.DecryptGCMString(encrypted, "32-byte-key-here")
 ### RSA 加密
 
 ```go
-import "github.com/everyday-items/toolkit/crypto/rsa"
+import "github.com/hexagon-codes/toolkit/crypto/rsa"
 
 kp, _ := rsa.GenerateKeyPair(2048)
 
@@ -433,7 +433,7 @@ publicPEM := kp.PublicKeyToPEM()
 ### HMAC 签名
 
 ```go
-import "github.com/everyday-items/toolkit/crypto/sign"
+import "github.com/hexagon-codes/toolkit/crypto/sign"
 
 sig := sign.HMACSHA256String("message", "secret-key")
 ok := sign.VerifyHMACSHA256String("message", "secret-key", sig)
@@ -446,7 +446,7 @@ sig := signer.Sign(params, timestamp, nonce)
 ### HTTP 客户端
 
 ```go
-import "github.com/everyday-items/toolkit/net/httpx"
+import "github.com/hexagon-codes/toolkit/net/httpx"
 
 // 简单请求
 resp, _ := httpx.Get("https://api.example.com/users")
@@ -479,7 +479,7 @@ if errors.Is(err, httpx.ErrSSRFBlocked) {
 ### HTTP 连接池
 
 ```go
-import "github.com/everyday-items/toolkit/net/httpx"
+import "github.com/hexagon-codes/toolkit/net/httpx"
 
 // 创建连接池
 pool := httpx.NewPool(httpx.PoolConfig{
@@ -533,7 +533,7 @@ cbPool := httpx.NewCircuitBreakerPool(pool, httpx.CircuitBreakerConfig{
 ### AI 客户端预设
 
 ```go
-import "github.com/everyday-items/toolkit/net/httpx"
+import "github.com/hexagon-codes/toolkit/net/httpx"
 
 // 各大 AI 平台预设客户端（自动配置 BaseURL、认证头、超时等）
 openai := httpx.OpenAIClient("sk-xxx")
@@ -576,7 +576,7 @@ content, _ := stream.CollectOpenAIContent()
 ### SSE 服务端推送
 
 ```go
-import "github.com/everyday-items/toolkit/net/sse"
+import "github.com/hexagon-codes/toolkit/net/sse"
 
 // 客户端 - 接收 SSE 事件
 client := sse.NewClient("https://api.example.com/events",
@@ -618,7 +618,7 @@ sse.ReadOpenAIStream(resp.Body, func(chunk ChatCompletion) error {
 ### 熔断器
 
 ```go
-import "github.com/everyday-items/toolkit/util/circuit"
+import "github.com/hexagon-codes/toolkit/util/circuit"
 
 // 基本使用
 breaker := circuit.New(
@@ -664,10 +664,57 @@ breaker.OnStateChange(func(from, to circuit.State) {
 })
 ```
 
+### 事件总线
+
+```go
+import "github.com/hexagon-codes/toolkit/event"
+
+// 创建事件总线
+bus := event.New()
+defer bus.Close()
+
+// 订阅指定类型事件
+unsub := bus.Subscribe("agent.start", func(e event.Event) {
+    fmt.Printf("Agent 启动: %v (来源: %s)\n", e.Payload, e.Source)
+})
+defer unsub()  // 取消订阅
+
+// 订阅所有事件（全局订阅）
+unsubAll := bus.SubscribeAll(func(e event.Event) {
+    fmt.Printf("[%s] %v\n", e.Type, e.Payload)
+})
+defer unsubAll()
+
+// 发布事件
+bus.Publish(event.Event{
+    Type:    "agent.start",
+    Payload: "my-agent",
+    Source:  "scheduler",
+})
+
+// 预定义事件类型常量
+bus.Publish(event.Event{Type: event.EventLLMRequest,  Payload: req})
+bus.Publish(event.Event{Type: event.EventLLMResponse, Payload: resp})
+bus.Publish(event.Event{Type: event.EventToolCall,    Payload: toolName})
+bus.Publish(event.Event{Type: event.EventCostUpdate,  Payload: cost})
+bus.Publish(event.Event{Type: event.EventAgentError,  Payload: err})
+
+// 配置选项
+bus = event.New(
+    event.WithMaxGoroutines(512),              // 限制并发 goroutine 数
+    event.WithPanicHandler(func(e event.Event, v any) {
+        log.Printf("handler panic: %v", v)     // 捕获 handler panic
+    }),
+)
+
+// 订阅数量统计
+count := bus.SubscriberCount("agent.start")
+```
+
 ### IP 工具
 
 ```go
-import "github.com/everyday-items/toolkit/net/ip"
+import "github.com/hexagon-codes/toolkit/net/ip"
 
 ip.IsValid("192.168.1.1")           // true
 ip.IsPrivate("192.168.1.1")         // true
@@ -684,7 +731,7 @@ localIP, _ := ip.GetLocalIP()
 ### 日志
 
 ```go
-import "github.com/everyday-items/toolkit/util/logger"
+import "github.com/hexagon-codes/toolkit/util/logger"
 
 // 快速使用
 logger.Info("user login", "userId", 123, "ip", "192.168.1.1")
@@ -705,7 +752,7 @@ log.Info("started", "port", 8080)
 ### 环境变量
 
 ```go
-import "github.com/everyday-items/toolkit/util/env"
+import "github.com/hexagon-codes/toolkit/util/env"
 
 port := env.GetIntDefault("PORT", 8080)
 debug := env.GetBool("DEBUG")
@@ -719,7 +766,7 @@ if env.IsProd() {
 ### 编码工具
 
 ```go
-import "github.com/everyday-items/toolkit/util/encoding"
+import "github.com/hexagon-codes/toolkit/util/encoding"
 
 // Base64
 encoded := encoding.Base64EncodeString("hello")
@@ -736,7 +783,7 @@ params, _ := encoding.ParseQuery("name=test&age=18")
 ### 反射工具
 
 ```go
-import "github.com/everyday-items/toolkit/util/reflectx"
+import "github.com/hexagon-codes/toolkit/util/reflectx"
 
 // Struct ↔ Map 转换
 user := User{Name: "Alice", Age: 20}
@@ -768,7 +815,7 @@ reflectx.IsSlice(value)
 ### 结构体验证
 
 ```go
-import "github.com/everyday-items/toolkit/util/validator"
+import "github.com/hexagon-codes/toolkit/util/validator"
 
 type User struct {
     Name     string `validate:"required,min=2,max=50"`
@@ -807,7 +854,7 @@ v.RegisterRule("phone", func(value any) bool {
 ### Poolx 协程池
 
 ```go
-import "github.com/everyday-items/toolkit/util/poolx"
+import "github.com/hexagon-codes/toolkit/util/poolx"
 
 // 创建协程池
 p := poolx.New("my-pool", poolx.WithMaxWorkers(10))
@@ -832,7 +879,7 @@ results, _ := poolx.Map(ctx, items, 4, func(item T) (R, error) {
 ### 配置管理
 
 ```go
-import "github.com/everyday-items/toolkit/util/config"
+import "github.com/hexagon-codes/toolkit/util/config"
 
 // 从文件加载（支持 JSON/YAML/TOML/ENV）
 cfg, _ := config.Load("config.yaml")
@@ -865,7 +912,7 @@ config.Set("key", "value")
 ### List 双向链表
 
 ```go
-import "github.com/everyday-items/toolkit/collection/list"
+import "github.com/hexagon-codes/toolkit/collection/list"
 
 // 创建链表
 l := list.New(1, 2, 3)
@@ -906,7 +953,7 @@ sl := list.NewSyncList[int]()
 ### Stack 栈
 
 ```go
-import "github.com/everyday-items/toolkit/collection/stack"
+import "github.com/hexagon-codes/toolkit/collection/stack"
 
 // 创建栈
 s := stack.New(1, 2, 3)
@@ -936,7 +983,7 @@ ss := stack.NewSyncStack[int]()
 ### Queue 队列
 
 ```go
-import "github.com/everyday-items/toolkit/collection/queue"
+import "github.com/hexagon-codes/toolkit/collection/queue"
 
 // FIFO 队列
 q := queue.New(1, 2, 3)
@@ -979,7 +1026,7 @@ sd := queue.NewSyncDeque[int]()
 ### Set 集合
 
 ```go
-import "github.com/everyday-items/toolkit/collection/set"
+import "github.com/hexagon-codes/toolkit/collection/set"
 
 // 创建 Set
 s := set.New(1, 2, 3)
@@ -1018,6 +1065,8 @@ s.All(func(n int) bool { return n > 0 })
 
 ```
 toolkit/
+├── event/              # 事件总线（发布-订阅，线程安全）
+│
 ├── ai/                 # AI 工具
 │   ├── streamx/       # 流式响应处理（OpenAI/Claude/Gemini）
 │   ├── tokenizer/     # Token 计数
@@ -1099,56 +1148,57 @@ toolkit/
 
 | 包 | 覆盖率 |
 |---|--------|
-| collection/list | 80.4% |
-| collection/queue | 90.4% |
-| collection/set | 74.3% |
+| collection/list | 79.4% |
+| collection/queue | 90.5% |
+| collection/set | 73.8% |
 | collection/stack | 100.0% |
+| event | 80.6% |
 | lang/cond | 94.5% |
-| lang/contextx | 92.4% |
-| lang/conv | 74.4% |
-| lang/errorx | 87.9% |
+| lang/contextx | 82.0% |
+| lang/conv | 68.1% |
+| lang/errorx | 87.2% |
 | lang/mapx | 96.3% |
-| lang/mathx | 93.5% |
+| lang/mathx | 88.7% |
 | lang/optional | 100.0% |
 | lang/slicex | 78.4% |
-| lang/stream | 94.3% |
+| lang/stream | 94.4% |
 | lang/stringx | 95.9% |
-| lang/syncx | 85.5% |
+| lang/syncx | 84.9% |
 | lang/timex | 91.2% |
 | lang/tuple | 93.8% |
-| crypto/aes | 82.8% |
+| crypto/aes | 83.5% |
 | crypto/rsa | 81.4% |
-| crypto/sign | 82.3% |
+| crypto/sign | 80.6% |
 | net/httpx | 50.0% |
-| net/ip | 76.0% |
+| net/ip | 64.9% |
 | net/sse | 82.5% |
-| cache/local | 77.1% |
-| cache/multi | 80.0% |
-| cache/redis | 78.3% |
-| util/circuit | 87.8% |
-| util/config | 77.8% |
-| util/encoding | 93.7% |
+| cache/local | 76.7% |
+| cache/multi | 89.5% |
+| cache/redis | 75.1% |
+| util/circuit | 85.9% |
+| util/config | 78.2% |
+| util/encoding | 94.0% |
 | util/env | 97.4% |
-| util/file | 82.7% |
+| util/file | 80.0% |
 | util/hash | 100.0% |
-| util/idgen | 74.0% |
-| util/json | 78.8% |
-| util/logger | 91.5% |
+| util/idgen | 72.8% |
+| util/json | 78.7% |
+| util/logger | 90.4% |
 | util/pagination | 92.6% |
-| util/poolx | 72.2% |
+| util/poolx | 70.2% |
 | util/rand | 86.8% |
-| util/rate | 60.9% |
-| util/reflectx | 90.3% |
-| util/retry | 65.0% |
+| util/rate | 61.8% |
+| util/reflectx | 89.7% |
+| util/retry | 63.7% |
 | util/slice | 100.0% |
-| util/validator | 87.6% |
-| infra/db | 76.3% |
-| infra/db/mysql | 48.7% |
-| infra/db/redis | 79.2% |
+| util/validator | 87.2% |
+| infra/db | 75.8% |
+| infra/db/mysql | 51.7% |
+| infra/db/redis | 79.8% |
 | infra/observe | 66.7% |
-| infra/otel | 29.8% |
-| infra/prometheus | 86.2% |
-| infra/queue/asynq | 27.2% |
+| infra/otel | 29.7% |
+| infra/prometheus | 85.0% |
+| infra/queue/asynq | 26.4% |
 
 ## 设计哲学
 

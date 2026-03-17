@@ -220,6 +220,14 @@ func (l *List[T]) move(n, at *Node[T]) {
 
 // Clear 清空链表
 func (l *List[T]) Clear() {
+	// 清理所有节点的引用，帮助 GC 回收
+	for n := l.root.next; n != l.root; {
+		next := n.next
+		n.prev = nil
+		n.next = nil
+		n.list = nil
+		n = next
+	}
 	l.init()
 }
 

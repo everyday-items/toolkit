@@ -18,7 +18,8 @@ type Collector struct {
 	goMemSys       *PrometheusGauge
 	goGCPauseTotal *PrometheusCounter
 
-	mu sync.RWMutex
+	mu   sync.RWMutex
+	done chan struct{} // 用于停止运行时指标收集 goroutine
 }
 
 // NewCollector 创建收集器
@@ -27,6 +28,7 @@ func NewCollector(registry *Registry, namespace, subsystem string) *Collector {
 		registry:  registry,
 		namespace: namespace,
 		subsystem: subsystem,
+		done:      make(chan struct{}),
 	}
 
 	c.initRuntimeMetrics()
@@ -68,22 +70,32 @@ func (c *Collector) startRuntimeCollector() {
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
+		for {
+			select {
+			case <-c.done:
+				return
+			case <-ticker.C:
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
 
-			c.goGoroutines.Set(float64(runtime.NumGoroutine()))
-			c.goMemAlloc.Set(float64(m.Alloc))
-			c.goMemSys.Set(float64(m.Sys))
+				c.goGoroutines.Set(float64(runtime.NumGoroutine()))
+				c.goMemAlloc.Set(float64(m.Alloc))
+				c.goMemSys.Set(float64(m.Sys))
 
-			// GC 暂停时间
-			gcPause := m.PauseTotalNs
-			if gcPause > lastGCPause {
-				c.goGCPauseTotal.Add(float64(gcPause-lastGCPause) / 1e9)
-				lastGCPause = gcPause
+				// GC 暂停时间
+				gcPause := m.PauseTotalNs
+				if gcPause > lastGCPause {
+					c.goGCPauseTotal.Add(float64(gcPause-lastGCPause) / 1e9)
+					lastGCPause = gcPause
+				}
 			}
 		}
 	}()
+}
+
+// Stop 停止运行时指标收集 goroutine
+func (c *Collector) Stop() {
+	close(c.done)
 }
 
 // Counter 获取自定义 Counter

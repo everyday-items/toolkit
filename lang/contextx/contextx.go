@@ -2,6 +2,7 @@ package contextx
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 )
@@ -351,7 +352,9 @@ func (w *WaitGroupContext) Go(fn func(ctx context.Context) error) {
 	}()
 }
 
-// Wait 等待所有 goroutine 完成或 context 取消
+// Wait 等待所有 goroutine 完成或 context 取消。
+// 注意：当 context 取消导致 Wait 提前返回时，后台已启动的任务仍会继续运行直到完成。
+// 这是预期行为，调用方应在任务函数中通过检查 ctx.Done() 来及时退出。
 func (w *WaitGroupContext) Wait() error {
 	done := make(chan struct{})
 	go func() {
@@ -399,14 +402,7 @@ func multiWaitError(errs []error) error {
 
 // joinStrings 拼接字符串切片
 func joinStrings(ss []string, sep string) string {
-	if len(ss) == 0 {
-		return ""
-	}
-	result := ss[0]
-	for _, s := range ss[1:] {
-		result += sep + s
-	}
-	return result
+	return strings.Join(ss, sep)
 }
 
 // --- Pool ---

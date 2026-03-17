@@ -169,9 +169,13 @@ func (s *Snowflake) waitNextMillis(timestamp int64) int64 {
 
 // SnowflakeID 使用默认生成器生成 ID
 func SnowflakeID() int64 {
+	initMu.Lock()
 	if defaultSnowflake == nil {
+		initMu.Unlock()
 		// 默认使用 worker ID 1
 		InitSnowflake(1)
+	} else {
+		initMu.Unlock()
 	}
 	return defaultSnowflake.Generate()
 }

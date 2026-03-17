@@ -20,7 +20,7 @@
 //
 // # 使用示例
 //
-//	import "github.com/everyday-items/toolkit/lang/mathx"
+//	import "github.com/hexagon-codes/toolkit/lang/mathx"
 //
 //	// 泛型 Min/Max（支持 int, float64, string 等）
 //	min := mathx.Min(3, 1, 4, 1, 5)           // 1 (int)

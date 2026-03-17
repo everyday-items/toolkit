@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/everyday-items/toolkit/lang/conv"
-	"github.com/everyday-items/toolkit/lang/stringx"
-	"github.com/everyday-items/toolkit/lang/timex"
+	"github.com/hexagon-codes/toolkit/lang/conv"
+	"github.com/hexagon-codes/toolkit/lang/stringx"
+	"github.com/hexagon-codes/toolkit/lang/timex"
 )
 
 func main() {

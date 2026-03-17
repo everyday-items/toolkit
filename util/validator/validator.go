@@ -43,10 +43,13 @@ func Phone(phone string) bool {
 	return phoneRegex.MatchString(phone)
 }
 
-// URL 验证 URL 格式
+// URL 验证 URL 格式，要求包含有效的 scheme 和 host
 func URL(rawURL string) bool {
-	_, err := url.ParseRequestURI(rawURL)
-	return err == nil
+	u, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return false
+	}
+	return u.Scheme != "" && u.Host != ""
 }
 
 // IP 验证 IP 地址

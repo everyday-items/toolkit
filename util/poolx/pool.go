@@ -1409,7 +1409,7 @@ func (p *Pool) SubmitWait(fn func()) error {
 }
 
 // SubmitWithContext submits a task with context support.
-// 直接在当前 goroutine 等待，避免启动额外 goroutine 导致泄漏。
+// 当 context 被取消时，会及时唤醒等待中的 goroutine 并返回 ctx.Err()。
 func (p *Pool) SubmitWithContext(ctx context.Context, fn func()) error {
 	if p.state.Load() == stateClosed {
 		return ErrPoolClosed
@@ -1427,18 +1427,29 @@ func (p *Pool) SubmitWithContext(ctx context.Context, fn func()) error {
 		return nil
 	}
 
-	// 直接在当前 goroutine 等待，避免启动额外 goroutine
+	// 启动辅助 goroutine 监听 context 取消，在取消时广播唤醒等待者
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			p.cond.Broadcast()
+		case <-done:
+		}
+	}()
+
 	p.lock.Lock()
 	for {
 		select {
 		case <-ctx.Done():
 			p.lock.Unlock()
+			close(done)
 			return ctx.Err()
 		default:
 		}
 
 		if p.state.Load() == stateClosed {
 			p.lock.Unlock()
+			close(done)
 			return ErrPoolClosed
 		}
 
@@ -1446,6 +1457,7 @@ func (p *Pool) SubmitWithContext(ctx context.Context, fn func()) error {
 		if w := p.workers.pop(); w != nil {
 			p.metrics.IdleWorkers.Add(-1)
 			p.lock.Unlock()
+			close(done)
 			p.metrics.SubmittedTasks.Add(1)
 			t := acquireTaskFast(fn)
 			w.taskCh <- t
@@ -1454,6 +1466,7 @@ func (p *Pool) SubmitWithContext(ctx context.Context, fn func()) error {
 
 		if w := p.createWorker(); w != nil {
 			p.lock.Unlock()
+			close(done)
 			w.run()
 			p.metrics.SubmittedTasks.Add(1)
 			t := acquireTaskFast(fn)

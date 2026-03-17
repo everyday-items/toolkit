@@ -14,7 +14,7 @@
 //
 // # 使用示例
 //
-//	import "github.com/everyday-items/toolkit/lang/timex"
+//	import "github.com/hexagon-codes/toolkit/lang/timex"
 //	import "time"
 //
 //	// 毫秒时间戳格式化

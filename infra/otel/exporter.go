@@ -85,7 +85,8 @@ type OTLPExporter struct {
 	bufferMu     sync.Mutex
 
 	// Shutdown
-	done chan struct{}
+	done     chan struct{}
+	closeOnce sync.Once
 }
 
 // OTLPExporterOption OTLP 导出器选项
@@ -313,9 +314,11 @@ func (e *OTLPExporter) batchLoop() {
 	}
 }
 
-// Shutdown 关闭导出器
+// Shutdown 关闭导出器，使用 sync.Once 防止重复关闭 channel 导致 panic
 func (e *OTLPExporter) Shutdown(ctx context.Context) error {
-	close(e.done)
+	e.closeOnce.Do(func() {
+		close(e.done)
+	})
 	return e.flush(ctx)
 }
 

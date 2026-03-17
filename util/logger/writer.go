@@ -74,11 +74,15 @@ func NewMultiWriter(writers ...io.Writer) *MultiWriter {
 	return &MultiWriter{writers: writers}
 }
 
-// Write 写入到所有输出
+// Write 写入到所有输出，任何一个 writer 出错时立即返回
 func (w *MultiWriter) Write(p []byte) (n int, err error) {
 	for _, writer := range w.writers {
 		n, err = writer.Write(p)
 		if err != nil {
+			return
+		}
+		if n != len(p) {
+			err = io.ErrShortWrite
 			return
 		}
 	}

@@ -17,7 +17,7 @@
 package event
 
 import (
-	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -194,28 +194,33 @@ func (b *Bus) SubscribeAll(handler Handler) (unsubscribe func()) {
 
 // Publish 异步发布事件
 //
-// 每个订阅者在独立的 goroutine 中接收事件，
-// 不会阻塞发布者。事件处理器中的 panic 会被捕获。
-// 使用信号量限制并发 goroutine 数量。
+// 每个订阅者在独立的 goroutine 中接收事件。
+// 事件处理器中的 panic 会被捕获。
+// 使用信号量限制并发 goroutine 数量，信号量满时会阻塞发布者。
 func (b *Bus) Publish(event Event) {
-	if b.closed.Load() {
-		return
-	}
-
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now()
 	}
 
+	// 在读锁保护下完成 closed 检查、订阅者复制和 wg.Add，
+	// 确保与 Close() 中的 wg.Wait() 不产生竞态
 	b.mu.RLock()
+	if b.closed.Load() {
+		b.mu.RUnlock()
+		return
+	}
 	// 复制订阅者列表，避免持锁执行 handler
 	typeSubs := make([]subscription, len(b.subscribers[event.Type]))
 	copy(typeSubs, b.subscribers[event.Type])
 	globalSubs := make([]subscription, len(b.globalSubs))
 	copy(globalSubs, b.globalSubs)
+	total := len(typeSubs) + len(globalSubs)
+	if total > 0 {
+		b.wg.Add(total)
+	}
 	b.mu.RUnlock()
 
 	for _, sub := range typeSubs {
-		b.wg.Add(1)
 		b.sem <- struct{}{} // 获取信号量，限制并发
 		go func(s subscription) {
 			defer func() {
@@ -226,7 +231,6 @@ func (b *Bus) Publish(event Event) {
 		}(sub)
 	}
 	for _, sub := range globalSubs {
-		b.wg.Add(1)
 		b.sem <- struct{}{} // 获取信号量，限制并发
 		go func(s subscription) {
 			defer func() {
@@ -243,15 +247,15 @@ func (b *Bus) Publish(event Event) {
 // 在当前 goroutine 中依次调用所有订阅者，
 // 阻塞直到所有处理器执行完毕。
 func (b *Bus) PublishSync(event Event) {
-	if b.closed.Load() {
-		return
-	}
-
 	if event.Timestamp.IsZero() {
 		event.Timestamp = time.Now()
 	}
 
 	b.mu.RLock()
+	if b.closed.Load() {
+		b.mu.RUnlock()
+		return
+	}
 	typeSubs := make([]subscription, len(b.subscribers[event.Type]))
 	copy(typeSubs, b.subscribers[event.Type])
 	globalSubs := make([]subscription, len(b.globalSubs))
@@ -271,7 +275,10 @@ func (b *Bus) PublishSync(event Event) {
 // 关闭后不再接受新的订阅和发布。
 // 等待所有活跃的 handler 执行完毕后返回。
 func (b *Bus) Close() {
+	// 使用写锁确保与 Publish 中的 wg.Add 互斥
+	b.mu.Lock()
 	b.closed.Store(true)
+	b.mu.Unlock()
 	// 等待所有活跃的 handler 完成
 	b.wg.Wait()
 	b.mu.Lock()
@@ -299,7 +306,7 @@ func (b *Bus) safeCall(handler Handler, event Event) {
 				b.panicHandler(event, r)
 			} else {
 				// 默认输出 panic 信息到标准错误
-				fmt.Printf("[event] handler panic: event=%s, panic=%v\n", event.Type, r)
+				log.Printf("[event] handler panic: event=%s, panic=%v", event.Type, r)
 			}
 		}
 	}()

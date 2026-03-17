@@ -259,17 +259,14 @@ func (sw *SlidingWindow) cleanup(now time.Time) {
 		}
 	}
 
-	// 如果有过期请求，重新分配切片避免内存泄漏
+	// 如果有过期请求，原地移动避免分配新切片
 	if validIdx > 0 {
-		remaining := len(sw.requests) - validIdx
-		if remaining == 0 {
-			sw.requests = sw.requests[:0]
-		} else {
-			// 使用 copy 避免底层数组保持对旧数据的引用
-			newRequests := make([]time.Time, remaining, sw.capacity)
-			copy(newRequests, sw.requests[validIdx:])
-			sw.requests = newRequests
+		copy(sw.requests, sw.requests[validIdx:])
+		// 清零剩余引用帮助 GC
+		for i := len(sw.requests) - validIdx; i < len(sw.requests); i++ {
+			sw.requests[i] = time.Time{}
 		}
+		sw.requests = sw.requests[:len(sw.requests)-validIdx]
 	}
 }
 

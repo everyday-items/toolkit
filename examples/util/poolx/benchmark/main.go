@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/everyday-items/toolkit/util/poolx"
+	"github.com/hexagon-codes/toolkit/util/poolx"
 )
 
 func main() {

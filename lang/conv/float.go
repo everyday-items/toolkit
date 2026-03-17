@@ -25,6 +25,26 @@ func Float32(any any) float32 {
 		return 0
 	}
 	switch value := any.(type) {
+	case int:
+		return float32(value)
+	case int8:
+		return float32(value)
+	case int16:
+		return float32(value)
+	case int32:
+		return float32(value)
+	case int64:
+		return float32(value)
+	case uint:
+		return float32(value)
+	case uint8:
+		return float32(value)
+	case uint16:
+		return float32(value)
+	case uint32:
+		return float32(value)
+	case uint64:
+		return float32(value)
 	case float32:
 		return value
 	case float64:
@@ -59,6 +79,26 @@ func Float64(any any) float64 {
 		return 0
 	}
 	switch value := any.(type) {
+	case int:
+		return float64(value)
+	case int8:
+		return float64(value)
+	case int16:
+		return float64(value)
+	case int32:
+		return float64(value)
+	case int64:
+		return float64(value)
+	case uint:
+		return float64(value)
+	case uint8:
+		return float64(value)
+	case uint16:
+		return float64(value)
+	case uint32:
+		return float64(value)
+	case uint64:
+		return float64(value)
 	case float32:
 		return float64(value)
 	case float64:

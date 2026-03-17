@@ -8,7 +8,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/everyday-items/toolkit/infra/queue/asynq"
+	"github.com/hexagon-codes/toolkit/infra/queue/asynq"
 	asq "github.com/hibiken/asynq"
 )
 

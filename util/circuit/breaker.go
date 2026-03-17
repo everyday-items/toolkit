@@ -449,6 +449,14 @@ func (b *Breaker) OnStateChange(fn func(from, to State)) {
 	b.stateListeners = append(b.stateListeners, fn)
 }
 
+// Close 关闭熔断器，释放 notifier goroutine
+// 调用后不应再使用该 Breaker 实例
+func (b *Breaker) Close() {
+	if b.notifyCh != nil {
+		close(b.notifyCh)
+	}
+}
+
 // Stats 统计信息
 type Stats struct {
 	State         State

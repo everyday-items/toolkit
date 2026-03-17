@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -300,12 +301,9 @@ func pkcs7Unpad(data []byte) ([]byte, error) {
 	}
 
 	// 使用恒定时间比较防止时序攻击
-	// 始终检查所有填充字节，不提前返回
 	valid := 1
 	for i := len(data) - padding; i < len(data); i++ {
-		if data[i] != byte(padding) {
-			valid = 0
-		}
+		valid &= subtle.ConstantTimeByteEq(data[i], byte(padding))
 	}
 
 	if valid == 0 {

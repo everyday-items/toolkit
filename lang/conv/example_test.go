@@ -3,7 +3,7 @@ package conv_test
 import (
 	"fmt"
 
-	"github.com/everyday-items/toolkit/lang/conv"
+	"github.com/hexagon-codes/toolkit/lang/conv"
 )
 
 func ExampleString() {

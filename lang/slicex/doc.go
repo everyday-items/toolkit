@@ -26,7 +26,7 @@
 //
 // # 使用示例
 //
-//	import "github.com/everyday-items/toolkit/lang/slicex"
+//	import "github.com/hexagon-codes/toolkit/lang/slicex"
 //
 //	// 包含检查
 //	found := slicex.Contains([]int{1, 2, 3}, 2)  // true

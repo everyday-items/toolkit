@@ -34,6 +34,13 @@ func Round(value float64) float64 {
 //	rounded := mathx.RoundTo(3.14159, 0)   // 3.0
 //	rounded := mathx.RoundTo(123.456, 1)   // 123.5
 func RoundTo(value float64, decimals int) float64 {
+	// 限制 decimals 范围，避免极大值导致 Pow 溢出产生 NaN
+	if decimals < 0 {
+		decimals = 0
+	}
+	if decimals > 15 {
+		decimals = 15
+	}
 	shift := math.Pow(10, float64(decimals))
 	return math.Round(value*shift) / shift
 }

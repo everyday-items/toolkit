@@ -28,18 +28,27 @@ type Client struct {
 
 // Global singleton.
 var (
-	instance *Client
-	once     sync.Once
-	initErr  error
-	mu       sync.RWMutex
+	instance    *Client
+	initialized atomic.Bool
+	initErr     error
+	mu          sync.RWMutex
 )
 
-// Init initializes the global ClickHouse client singleton.
-// It is safe to call multiple times; only the first call takes effect.
+// Init 初始化全局 ClickHouse 客户端单例。
+// 可安全多次调用，仅首次调用生效。使用 atomic.Bool + sync.Mutex 双重检查，线程安全。
 func Init(ctx context.Context, cfg *Config, opts ...Option) error {
-	once.Do(func() {
-		instance, initErr = New(ctx, cfg, opts...)
-	})
+	if initialized.Load() {
+		return initErr
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if initialized.Load() {
+		return initErr
+	}
+	instance, initErr = New(ctx, cfg, opts...)
+	if initErr == nil {
+		initialized.Store(true)
+	}
 	return initErr
 }
 
@@ -163,8 +172,8 @@ func Close() error {
 	return err
 }
 
-// Reset resets the singleton, allowing re-initialization.
-// This is primarily useful for testing.
+// Reset 重置单例，允许重新初始化。
+// 主要用于测试场景。
 func Reset() {
 	mu.Lock()
 	defer mu.Unlock()
@@ -173,7 +182,7 @@ func Reset() {
 		_ = instance.Close()
 		instance = nil
 	}
-	once = sync.Once{}
+	initialized.Store(false)
 	initErr = nil
 }
 

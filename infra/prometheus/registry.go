@@ -385,10 +385,18 @@ type PrometheusSummary struct {
 	mu        sync.RWMutex
 }
 
+// maxObservations 环形缓冲区最大容量，防止无限增长导致 OOM
+const maxObservations = 1000
+
 type summaryValue struct {
+	// observations 固定大小的环形缓冲区
 	observations []float64
-	sum          float64
-	count        uint64
+	// writePos 环形缓冲区写入位置
+	writePos int
+	// full 标记缓冲区是否已满（开始覆盖旧数据）
+	full bool
+	sum  float64
+	count uint64
 }
 
 // Observe 观察值
@@ -401,12 +409,18 @@ func (s *PrometheusSummary) Observe(v float64, labelValues ...string) {
 	sv, ok := s.values[key]
 	if !ok {
 		sv = &summaryValue{
-			observations: make([]float64, 0, 1000),
+			observations: make([]float64, maxObservations),
 		}
 		s.values[key] = sv
 	}
 
-	sv.observations = append(sv.observations, v)
+	// 环形缓冲区写入
+	sv.observations[sv.writePos] = v
+	sv.writePos++
+	if sv.writePos >= maxObservations {
+		sv.writePos = 0
+		sv.full = true
+	}
 	sv.sum += v
 	sv.count++
 }
@@ -423,10 +437,16 @@ func (s *PrometheusSummary) String() string {
 	for key, sv := range s.values {
 		labels := formatLabels(s.labels, key)
 
-		// 计算分位数
-		if len(sv.observations) > 0 {
-			sorted := make([]float64, len(sv.observations))
-			copy(sorted, sv.observations)
+		// 计算分位数：从环形缓冲区中提取有效数据
+		var obsLen int
+		if sv.full {
+			obsLen = maxObservations
+		} else {
+			obsLen = sv.writePos
+		}
+		if obsLen > 0 {
+			sorted := make([]float64, obsLen)
+			copy(sorted, sv.observations[:obsLen])
 			sort.Float64s(sorted)
 
 			for q := range s.quantiles {

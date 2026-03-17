@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/everyday-items/toolkit/infra/observe"
-	"github.com/everyday-items/toolkit/util/idgen"
+	"github.com/hexagon-codes/toolkit/infra/observe"
+	"github.com/hexagon-codes/toolkit/util/idgen"
 )
 
 // OTelTracer OpenTelemetry 追踪器

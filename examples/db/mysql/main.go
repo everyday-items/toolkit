@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/everyday-items/toolkit/infra/db/mysql"
+	"github.com/hexagon-codes/toolkit/infra/db/mysql"
 )
 
 // User 示例用户结构

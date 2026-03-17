@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/everyday-items/toolkit/infra/db/redis"
+	"github.com/hexagon-codes/toolkit/infra/db/redis"
 	goredis "github.com/redis/go-redis/v9"
 )
 

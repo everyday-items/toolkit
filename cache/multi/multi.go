@@ -26,6 +26,9 @@ var (
 	// ErrNoLayers 没有配置任何缓存层
 	ErrNoLayers = errors.New("multi-cache: no cache layers configured")
 
+	// errCacheMiss 内部标记，用于 GetOrLoad 逐层探测，不应被底层 IsNotFound 识别
+	errCacheMiss = errors.New("multi-cache: internal cache miss")
+
 	// ErrNilLayer 缓存层实例为 nil
 	ErrNilLayer = errors.New("multi-cache: layer instance is nil")
 )
@@ -197,7 +200,7 @@ func (c *Cache) GetOrLoad(
 	// 1. 逐层查询（不嵌套 loader，使用 dummy loader 仅读取缓存）
 	for i, layer := range c.layers {
 		err := layer.Layer.GetOrLoad(ctx, key, layer.TTL, dest, func(ctx context.Context) (any, error) {
-			return nil, ErrNotFound // 不真正加载，只查缓存
+			return nil, errCacheMiss // 使用内部标记，避免被底层识别为 NotFound 而写入负缓存
 		})
 		if err == nil {
 			// 命中，回填到前面的层
@@ -206,10 +209,16 @@ func (c *Cache) GetOrLoad(
 			}
 			return nil
 		}
-		// 非 NotFound 错误记录日志，继续下一层
-		if !c.isNotFound(err) {
-			c.onError(ctx, layer.Name, "get", key, err)
+		// errCacheMiss 表示该层未命中，继续下一层
+		if errors.Is(err, errCacheMiss) {
+			continue
 		}
+		// ErrNotFound 来自负缓存命中，直接向外返回
+		if c.isNotFound(err) {
+			return ErrNotFound
+		}
+		// 其他错误记录日志，继续下一层
+		c.onError(ctx, layer.Name, "get", key, err)
 	}
 
 	// 2. 所有层都未命中，调用 loader（只调用一次）
@@ -239,6 +248,15 @@ const backfillTimeout = 5 * time.Second
 
 // backfillAll 回填到所有层（异步执行，不阻塞主流程）
 func (c *Cache) backfillAll(ctx context.Context, key string, value any) {
+	// 深拷贝 value，防止异步回填与调用方竞争
+	data, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	var snapshot any
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return
+	}
 	// 异步执行回填，不阻塞主流程
 	go func() {
 		// 使用 WithoutCancel 脱离原始请求的取消信号，但保留 trace/value 等上下文信息
@@ -255,7 +273,7 @@ func (c *Cache) backfillAll(ctx context.Context, key string, value any) {
 				// 创建一个临时变量接收数据（避免并发问题）
 				var temp any
 				err := l.Layer.GetOrLoad(backfillCtx, key, l.TTL, &temp, func(ctx context.Context) (any, error) {
-					return value, nil
+					return snapshot, nil
 				})
 				if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 					c.onError(backfillCtx, l.Name, "backfill", key, err)
@@ -270,6 +288,15 @@ func (c *Cache) backfillAll(ctx context.Context, key string, value any) {
 // backfillRange 回填到指定范围的层（异步执行，不阻塞主流程）
 // 将 value 回填到 [start, end) 范围内的层
 func (c *Cache) backfillRange(ctx context.Context, key string, value any, start, end int) {
+	// 深拷贝 value，防止异步回填与调用方竞争
+	data, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	var snapshot any
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return
+	}
 	// 异步执行回填，不阻塞主流程
 	go func() {
 		// 使用 WithoutCancel 脱离原始请求的取消信号，但保留 trace/value 等上下文信息
@@ -284,7 +311,7 @@ func (c *Cache) backfillRange(ctx context.Context, key string, value any, start,
 				defer wg.Done()
 				var temp any
 				err := l.Layer.GetOrLoad(backfillCtx, key, l.TTL, &temp, func(ctx context.Context) (any, error) {
-					return value, nil
+					return snapshot, nil
 				})
 				if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 					c.onError(backfillCtx, l.Name, "backfill", key, err)

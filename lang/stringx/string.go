@@ -5,9 +5,6 @@ import (
 	"unsafe"
 )
 
-// emptyBytes 预分配的空字节切片，避免每次调用 StringToBytes("") 时分配
-var emptyBytes = []byte{}
-
 // BytesToString 将 []byte 零拷贝转换为 string
 //
 // ⚠️ 重要警告：
@@ -31,7 +28,7 @@ func BytesToString(b []byte) string {
 //   - 如果需要可修改的 []byte，请使用标准的 []byte(s) 转换
 func StringToBytes(s string) []byte {
 	if s == "" {
-		return emptyBytes
+		return nil
 	}
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }

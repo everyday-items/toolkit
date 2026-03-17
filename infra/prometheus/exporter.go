@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/everyday-items/toolkit/infra/observe"
+	"github.com/hexagon-codes/toolkit/infra/observe"
 )
 
 // Exporter Prometheus 导出器
@@ -176,20 +176,27 @@ var _ observe.Metrics = (*MetricsAdapter)(nil)
 
 type counterAdapter struct {
 	counter *PrometheusCounter
+	mu      sync.Mutex
 	value   float64
 }
 
 func (c *counterAdapter) Inc() {
 	c.counter.Inc()
+	c.mu.Lock()
 	c.value++
+	c.mu.Unlock()
 }
 
 func (c *counterAdapter) Add(v float64) {
 	c.counter.Add(v)
+	c.mu.Lock()
 	c.value += v
+	c.mu.Unlock()
 }
 
 func (c *counterAdapter) Value() float64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.value
 }
 
@@ -215,30 +222,41 @@ func (h *histogramAdapter) Sum() float64 {
 
 type gaugeAdapter struct {
 	gauge *PrometheusGauge
+	mu    sync.Mutex
 	value float64
 }
 
 func (g *gaugeAdapter) Set(v float64) {
 	g.gauge.Set(v)
+	g.mu.Lock()
 	g.value = v
+	g.mu.Unlock()
 }
 
 func (g *gaugeAdapter) Inc() {
 	g.gauge.Inc()
+	g.mu.Lock()
 	g.value++
+	g.mu.Unlock()
 }
 
 func (g *gaugeAdapter) Dec() {
 	g.gauge.Dec()
+	g.mu.Lock()
 	g.value--
+	g.mu.Unlock()
 }
 
 func (g *gaugeAdapter) Add(v float64) {
 	g.gauge.Add(v)
+	g.mu.Lock()
 	g.value += v
+	g.mu.Unlock()
 }
 
 func (g *gaugeAdapter) Value() float64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	return g.value
 }
 

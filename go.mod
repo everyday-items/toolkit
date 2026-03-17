@@ -1,4 +1,4 @@
-module github.com/everyday-items/toolkit
+module github.com/hexagon-codes/toolkit
 
 go 1.25.5
 

@@ -1,6 +1,6 @@
 package slicex
 
-import "github.com/everyday-items/toolkit/lang/mathx"
+import "github.com/hexagon-codes/toolkit/lang/mathx"
 
 // Number 数字类型约束
 type Number interface {

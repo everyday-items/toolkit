@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/everyday-items/toolkit/lang/timex"
+	"github.com/hexagon-codes/toolkit/lang/timex"
 )
 
 func ExampleMsecFormat() {

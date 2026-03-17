@@ -192,8 +192,10 @@ func (s *StreamResponse) readSSELocked() (*SSEEvent, error) {
 		} else if strings.HasPrefix(line, "id:") {
 			event.ID = strings.TrimSpace(strings.TrimPrefix(line, "id:"))
 		} else if strings.HasPrefix(line, "retry:") {
-			// 忽略 retry 解析错误
-			_, _ = parseRetry(strings.TrimSpace(strings.TrimPrefix(line, "retry:")))
+			// 解析 retry 字段，忽略解析错误
+			if retry, err := parseRetry(strings.TrimSpace(strings.TrimPrefix(line, "retry:"))); err == nil {
+				event.Retry = retry
+			}
 		} else if strings.HasPrefix(line, ":") {
 			// 注释行，忽略
 			continue

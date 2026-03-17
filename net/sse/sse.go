@@ -430,6 +430,7 @@ type Writer struct {
 	flusher http.Flusher
 	closed  bool
 	mu      sync.Mutex
+	buf     bytes.Buffer // 复用缓冲区，避免每次 Write 分配
 }
 
 // NewWriter 创建 SSE 事件写入器
@@ -457,38 +458,39 @@ func (w *Writer) Write(event *Event) error {
 		return ErrStreamClosed
 	}
 
-	var buf bytes.Buffer
+	// 复用缓冲区，避免每次分配
+	w.buf.Reset()
 
 	if event.ID != "" {
-		buf.WriteString("id: ")
-		buf.WriteString(event.ID)
-		buf.WriteByte('\n')
+		w.buf.WriteString("id: ")
+		w.buf.WriteString(event.ID)
+		w.buf.WriteByte('\n')
 	}
 
 	if event.Event != "" {
-		buf.WriteString("event: ")
-		buf.WriteString(event.Event)
-		buf.WriteByte('\n')
+		w.buf.WriteString("event: ")
+		w.buf.WriteString(event.Event)
+		w.buf.WriteByte('\n')
 	}
 
 	if event.Data != "" {
 		lines := strings.Split(event.Data, "\n")
 		for _, line := range lines {
-			buf.WriteString("data: ")
-			buf.WriteString(line)
-			buf.WriteByte('\n')
+			w.buf.WriteString("data: ")
+			w.buf.WriteString(line)
+			w.buf.WriteByte('\n')
 		}
 	}
 
 	if event.Retry > 0 {
-		buf.WriteString("retry: ")
-		buf.WriteString(strconv.Itoa(event.Retry))
-		buf.WriteByte('\n')
+		w.buf.WriteString("retry: ")
+		w.buf.WriteString(strconv.Itoa(event.Retry))
+		w.buf.WriteByte('\n')
 	}
 
-	buf.WriteByte('\n')
+	w.buf.WriteByte('\n')
 
-	_, err := w.w.Write(buf.Bytes())
+	_, err := w.w.Write(w.buf.Bytes())
 	if err != nil {
 		return err
 	}

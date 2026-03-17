@@ -184,10 +184,8 @@ func (cb *CircuitBreaker) Stats() CircuitBreakerStats {
 	}
 }
 
-// callbackTimeout 状态变化回调的超时时间
-const callbackTimeout = 5 * time.Second
-
-// safeCallback 安全地执行状态变化回调（带超时和 panic 恢复）
+// safeCallback 安全地执行状态变化回调（带 panic 恢复）
+// 使用单层 goroutine，避免内层 goroutine 泄漏
 func safeCallback(name string, callback func(name string, from, to CircuitState), from, to CircuitState) {
 	if callback == nil {
 		return
@@ -200,19 +198,7 @@ func safeCallback(name string, callback func(name string, from, to CircuitState)
 			}
 		}()
 
-		// 使用带超时的执行
-		done := make(chan struct{})
-		go func() {
-			callback(name, from, to)
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			// 正常完成
-		case <-time.After(callbackTimeout):
-			GetLogger().Error(fmt.Sprintf("[CircuitBreaker] %s: callback timeout after %v", name, callbackTimeout))
-		}
+		callback(name, from, to)
 	}()
 }
 

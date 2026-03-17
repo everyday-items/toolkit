@@ -232,7 +232,7 @@ type Cache struct {
 	stopped         atomic.Bool // 防止双重关闭
 
 	// 版本号：Clear() 时递增，用于防止 singleflight 竞态写入旧数据
-	generation uint64
+	generation atomic.Uint64
 }
 
 const (
@@ -421,7 +421,7 @@ func (c *Cache) setItemWithGen(fullKey string, packed []byte, ttl time.Duration,
 	defer c.mu.Unlock()
 
 	// 版本号检查：如果 Clear() 在 singleflight 期间被调用，放弃写入
-	if checkGen && c.generation != expectedGen {
+	if checkGen && c.generation.Load() != expectedGen {
 		return
 	}
 
@@ -431,9 +431,7 @@ func (c *Cache) setItemWithGen(fullKey string, packed []byte, ttl time.Duration,
 
 // getGeneration 获取当前版本号（用于 singleflight 竞态保护）
 func (c *Cache) getGeneration() uint64 {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.generation
+	return c.generation.Load()
 }
 
 func (c *Cache) evictIfNeededLocked(now time.Time) {
@@ -579,7 +577,7 @@ func (c *Cache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items = make(map[string]*localItem)
-	c.generation++ // 递增版本号，使进行中的 singleflight 写入失效
+	c.generation.Add(1) // 递增版本号，使进行中的 singleflight 写入失效
 }
 
 // loadResult 用于 singleflight 返回值，携带缓存命中信息

@@ -28,9 +28,10 @@ type StreamDecoder struct {
 
 // NewStreamDecoder 创建流式 JSON 解码器
 func NewStreamDecoder(r io.Reader) *StreamDecoder {
+	br := bufio.NewReader(r)
 	return &StreamDecoder{
-		reader:  bufio.NewReader(r),
-		decoder: json.NewDecoder(r),
+		reader:  br,
+		decoder: json.NewDecoder(br),
 	}
 }
 
@@ -196,7 +197,10 @@ func (e *NDJSONEncoder) Encode(v any) error {
 		return err
 	}
 
-	_, err = e.writer.Write(append(data, '\n'))
+	if _, err = e.writer.Write(data); err != nil {
+		return err
+	}
+	_, err = e.writer.Write([]byte{'\n'})
 	return err
 }
 

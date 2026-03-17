@@ -261,16 +261,21 @@ func (m *Manager) Close() error {
 
 // Global manager instance.
 var (
-	globalManager     *Manager
-	globalManagerOnce sync.Once
-	globalManagerMu   sync.Mutex
+	globalManager   *Manager
+	globalManagerMu sync.Mutex
 )
 
-// GlobalManager returns the global database client manager singleton.
+// GlobalManager 返回全局数据库客户端管理器单例。
+// 使用 mutex + 双重检查锁定，与 SetGlobalManager 统一同步机制。
 func GlobalManager() *Manager {
-	globalManagerOnce.Do(func() {
+	if globalManager != nil {
+		return globalManager
+	}
+	globalManagerMu.Lock()
+	defer globalManagerMu.Unlock()
+	if globalManager == nil {
 		globalManager = NewManager()
-	})
+	}
 	return globalManager
 }
 

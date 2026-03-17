@@ -13,7 +13,7 @@
 //
 // # 使用示例
 //
-//	import "github.com/everyday-items/toolkit/lang/stringx"
+//	import "github.com/hexagon-codes/toolkit/lang/stringx"
 //
 //	// 零拷贝转换（高性能）
 //	bytes := []byte("hello world")

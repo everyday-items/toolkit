@@ -3,7 +3,7 @@ package stringx_test
 import (
 	"fmt"
 
-	"github.com/everyday-items/toolkit/lang/stringx"
+	"github.com/hexagon-codes/toolkit/lang/stringx"
 )
 
 func ExampleBytesToString() {

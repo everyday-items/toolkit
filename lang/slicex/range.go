@@ -1,6 +1,6 @@
 package slicex
 
-import "github.com/everyday-items/toolkit/lang/mathx"
+import "github.com/hexagon-codes/toolkit/lang/mathx"
 
 // Range 生成一个数字范围切片
 //

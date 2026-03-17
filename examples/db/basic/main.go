@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/everyday-items/toolkit/infra/db/mysql"
-	"github.com/everyday-items/toolkit/infra/db/redis"
+	"github.com/hexagon-codes/toolkit/infra/db/mysql"
+	"github.com/hexagon-codes/toolkit/infra/db/redis"
 )
 
 func main() {

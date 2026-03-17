@@ -13,7 +13,7 @@
 //
 // # 使用示例
 //
-//	import "github.com/everyday-items/toolkit/lang/syncx"
+//	import "github.com/hexagon-codes/toolkit/lang/syncx"
 //
 //	// Singleflight - 防缓存击穿
 //	sf := syncx.NewSingleflight()

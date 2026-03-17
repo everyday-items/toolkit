@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	// 全局实例（单例模式）
-	globalDB   *DB
-	globalOnce sync.Once
+	// 全局实例（使用 mutex + 双重检查，允许失败后重试）
+	globalDB *DB
+	globalMu sync.Mutex
 )
 
 // DB MySQL 数据库封装
@@ -24,12 +24,21 @@ type DB struct {
 }
 
 // Init 初始化全局 MySQL 实例
+// 使用 mutex + 双重检查模式，允许初始化失败后重试
 func Init(config *Config) (*DB, error) {
-	var err error
-	globalOnce.Do(func() {
-		globalDB, err = New(config)
-	})
-	return globalDB, err
+	// 快速路径：已初始化成功则直接返回
+	globalMu.Lock()
+	defer globalMu.Unlock()
+	if globalDB != nil {
+		return globalDB, nil
+	}
+
+	db, err := New(config)
+	if err != nil {
+		return nil, err
+	}
+	globalDB = db
+	return globalDB, nil
 }
 
 // GetGlobal 获取全局 MySQL 实例

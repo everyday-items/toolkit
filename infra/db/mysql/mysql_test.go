@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 )
@@ -619,7 +618,7 @@ func TestInit_Once(t *testing.T) {
 func TestGetGlobal_AfterInit(t *testing.T) {
 	// 重置全局状态
 	globalDB = nil
-	globalOnce = sync.Once{}
+	// globalDB 已重置为 nil，mutex+双重检查模式允许重新初始化
 
 	config := DefaultConfig("user:pass@tcp(localhost:3306)/test")
 	config.ConnectTimeout = 1 * time.Second

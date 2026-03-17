@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/everyday-items/toolkit/cache/local"
+	"github.com/hexagon-codes/toolkit/cache/local"
 )
 
 type User struct {

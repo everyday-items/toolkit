@@ -106,6 +106,10 @@ func (g *Singleflight) Do(key string, fn func() (any, error)) (any, error) {
 	delete(g.m, key)
 	g.mu.Unlock()
 
+	// 主调者也需要 re-panic，与等待者行为保持一致
+	if pe, ok := c.err.(*panicError); ok {
+		panic(pe.value)
+	}
 	return c.val, c.err
 }
 
